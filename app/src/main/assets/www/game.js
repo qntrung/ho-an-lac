@@ -16,9 +16,38 @@ var ROBES = [
   { k: 'lam', name: 'Áo lam', robe: '#7F95A3', robeD: '#687E8C' },
   { k: 'nau', name: 'Áo tràng nâu', robe: '#8A6248', robeD: '#74503A' },
   { k: 'trang', name: 'Áo dài trắng', robe: '#F7F4EE', robeD: '#E2DCD0' },
-  { k: 'hong', name: 'Áo dài hồng', robe: '#F4B6C8', robeD: '#E295AD' },
-  { k: 'vang', name: 'Áo tràng vàng', robe: '#E8B04A', robeD: '#C98A3A' }
+  { k: 'hong', name: 'Áo dài hồng', robe: '#F4B6C8', robeD: '#E295AD', cost: 300 },
+  { k: 'ngoc', name: 'Áo dài lam ngọc', robe: '#6FB8BC', robeD: '#4F9A9E', cost: 500 },
+  { k: 'vang', name: 'Áo tràng vàng', robe: '#E8B04A', robeD: '#C98A3A', need: 'Thắp hương 30 ngày', needKey: 'streak30' }
 ];
+var HAIRS = [
+  { k: 'bui', name: 'Búi tó' },
+  { k: 'ngan', name: 'Tóc ngắn' },
+  { k: 'dai', name: 'Tóc dài', cost: 100 },
+  { k: 'bim', name: 'Tóc bím', cost: 150 },
+  { k: 'cuhanh', name: 'Búi củ hành', need: 'Tùy hỷ 100 lần', needKey: 'tuyhy100' }
+];
+var ACCS = [
+  { k: 'beads', name: 'Chuỗi hạt', slot: 'beads' },
+  { k: 'hat', name: 'Nón lá', slot: 'hat' },
+  { k: 'fan', name: 'Quạt giấy', slot: 'hand', cost: 150 },
+  { k: 'lantern', name: 'Đèn lồng', slot: 'hand', cost: 200 },
+  { k: 'lotus', name: 'Hoa sen cầm tay', slot: 'hand', need: 'Thả 50 con cá', needKey: 'rel50' }
+];
+var FISH = [
+  { k: 'chepdo', name: 'Cá chép đỏ', rar: 1, meaning: 'Đỗ đạt, công danh thăng tiến', body: '#E4572E', belly: '#FFC08A', fin: '#F07A4A' },
+  { k: 'chepvang', name: 'Cá chép vàng', rar: 1, meaning: 'Tài lộc, sung túc', body: '#E8A93A', belly: '#FFE6A8', fin: '#F2C14E' },
+  { k: 'cavang', name: 'Cá vàng', rar: 1, meaning: 'May mắn, an vui', body: '#F28A3A', belly: '#FFD2A0', fin: '#F6A564' },
+  { k: 'ro', name: 'Cá rô đồng', rar: 1, meaning: 'Bền bỉ, chịu thương chịu khó', body: '#6E7F5A', belly: '#C9C79A', fin: '#5A6A48' },
+  { k: 'tre', name: 'Cá trê', rar: 1, meaning: 'Vững vàng qua sóng gió', body: '#4A4440', belly: '#8A7F74', fin: '#3A3430', whisk: true },
+  { k: 'dieuhong', name: 'Cá diêu hồng', rar: 1, meaning: 'Gia đình hòa thuận', body: '#E98A90', belly: '#FFD6D6', fin: '#F2A4A8' },
+  { k: 'kohaku', name: 'Cá koi Kohaku', rar: 2, meaning: 'Bình an, hạnh phúc', body: '#FFF6EE', belly: '#FFFFFF', fin: '#F2E4D8', spot: '#E4572E' },
+  { k: 'showa', name: 'Cá koi Showa', rar: 2, meaning: 'Kiên định, vượt khó', body: '#2E2A28', belly: '#F2EAE0', fin: '#3A3430', spot: '#E4572E', need: 'Tích 2.000 phước', needKey: 'phuoc2000' },
+  { k: 'carong', name: 'Cá rồng', rar: 3, meaning: 'Uy quyền, thịnh vượng', body: '#D9A02A', belly: '#FFE48A', fin: '#C98A12', need: 'Thả 100 con cá', needKey: 'rel100' }
+];
+// Bản thử cho bạn bè: mở sẵn mọi loài cá
+var UNLOCK_ALL_FISH = true;
+function fishOf(k) { for (var i = 0; i < FISH.length; i++) if (FISH[i].k === k) return FISH[i]; return FISH[0]; }
 function robeOf(k) { for (var i = 0; i < ROBES.length; i++) if (ROBES[i].k === k) return ROBES[i]; return ROBES[0]; }
 function today() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
 
@@ -26,10 +55,24 @@ var S = {
   phuoc: store.get('phuoc', 1250),
   turns: 5, bag: store.get('bag', 0),
   name: store.get('name', 'Tịnh Tâm'), robe: store.get('robe', 'lam'),
+  owned: store.get('owned', { lam: 1, nau: 1, trang: 1, beads: 1, hat: 1, bui: 1, ngan: 1 }),
+  look: store.get('look', null),
+  fishK: store.get('fishK', 'chepdo'),
+  stats: store.get('stats', {}),
+  prog: store.get('prog', { rel: 0, tuyhy: 0, streak: 0, lastIncense: '', earned: 0 }),
   ev: null, fish: [], returning: null, inLake: false, hosting: false, nextEv: 0
 };
 (function loadTurns() { var t = store.get('turns', null); S.turns = (t && t.d === today()) ? t.n : 5; })();
 function saveTurns() { store.set('turns', { d: today(), n: S.turns }); }
+if (!S.look) S.look = { robe: S.robe, hair: 'bui', hat: false, beads: true, hand: 'none' };
+S.look.robe = S.look.robe || S.robe;
+function saveLook() { S.robe = S.look.robe; store.set('robe', S.robe); store.set('look', S.look); }
+function saveProg() { store.set('prog', S.prog); }
+function needMet(key) {
+  var g = S.prog;
+  return { streak30: g.streak >= 30, tuyhy100: g.tuyhy >= 100, rel50: g.rel >= 50, rel100: g.rel >= 100, phuoc2000: g.earned >= 2000 }[key] || false;
+}
+function lookKey(l) { return [l.robe, l.hair, l.hat ? 1 : 0, l.beads ? 1 : 0, l.hand].join('|'); }
 
 /* ===================== Renderer & cảnh ===================== */
 var canvas = $('stage');
@@ -123,7 +166,12 @@ var R_IN = 12.8, R_OUT = 24, R_WALK = 26.6;
 /* ===================== Nhân vật chibi có khớp ===================== */
 var skinM = M('#F5D2B0'), hairM = M('#3A2E2A', { roughness: 0.55 }), pantsM = M('#EFE9DC'), shoeM = M('#4A3F3A'), eyeM = M('#1E1410'), whiteM = M('#FFFFFF');
 var blushM = new T.MeshBasicMaterial({ color: 0xF4A6B8, transparent: true, opacity: 0.7 }), mouthM = M('#B5605A'), noseM = M('#EFC6A2');
-function chibi(rb) {
+var hatM = M('#E9D7A6'), hatD = M('#D6C08A'), beadM = M('#6E3A1E', { roughness: 0.5 }), ribbonM = M('#C9567A');
+var fanM = new T.MeshStandardMaterial({ color: '#E36A3B', roughness: 0.7, side: T.DoubleSide }), fanEdge = M('#F2C14E'), stickM = M('#8A5A2B');
+var lanM = M('#E8642F', { emissive: 0xFF8A3A, emissiveIntensity: 0.9 }), lotusM = M('#F4B6C8', { roughness: 0.6 }), lotusD = M('#E68FAA'), leafM = M('#6FA864');
+function chibi(look) {
+  look = look || {};
+  var rb = robeOf(look.robe);
   var robe = M(rb.robe), robeD = M(rb.robeD);
   var root = new T.Group();
   var hips = new T.Group(); hips.position.y = 0.95; root.add(hips);
@@ -143,11 +191,36 @@ function chibi(rb) {
   var chest = mesh(cyl(0.29, 0.33, 0.62, 18), robe); chest.position.y = 0.3; spine.add(chest);
   var flap = mesh(new T.BoxGeometry(0.05, 0.6, 0.02), robeD); flap.position.set(0.08, 0.3, 0.31); flap.rotation.z = 0.15; spine.add(flap);
   var neck = mesh(cyl(0.09, 0.1, 0.12), skinM); neck.position.y = 0.66; spine.add(neck);
+  if (look.beads) {
+    var ring = new T.Group(); ring.position.set(0, 0.58, 0.04); ring.rotation.x = 0.35; spine.add(ring);
+    for (var bi = 0; bi < 16; bi++) { var ba = bi / 16 * Math.PI * 2; var bd = mesh(sph(0.04, 8, 6), beadM, false); bd.position.set(Math.cos(ba) * 0.26, 0, Math.sin(ba) * 0.24); ring.add(bd); }
+    var tas = mesh(new T.ConeGeometry(0.035, 0.12, 6), ribbonM, false); tas.position.set(0, -0.08, 0.26); tas.rotation.x = Math.PI; ring.add(tas);
+  }
   var head = new T.Group(); head.position.y = 1.18; spine.add(head);
   head.add(mesh(sph(0.52, 26, 20), skinM));
   var cap = mesh(new T.SphereGeometry(0.555, 26, 16, 0, Math.PI * 2, 0, Math.PI * 0.4), hairM); cap.position.y = 0.02; head.add(cap);
   var back = mesh(new T.SphereGeometry(0.56, 26, 16, Math.PI, Math.PI, 0, Math.PI * 0.72), hairM); back.position.z = -0.02; head.add(back);
-  var bun = mesh(sph(0.2), hairM); bun.position.set(0, 0.42, -0.32); head.add(bun);
+  var hair = look.hair || 'bui';
+  if (hair === 'bui' && !look.hat) { var bun = mesh(sph(0.2), hairM); bun.position.set(0, 0.42, -0.32); head.add(bun); }
+  if (hair === 'cuhanh' && !look.hat) {
+    var top = mesh(sph(0.22), hairM); top.position.set(0, 0.6, -0.05); head.add(top);
+    var top2 = mesh(sph(0.11), hairM); top2.position.set(0, 0.82, -0.05); head.add(top2);
+    var band = mesh(new T.TorusGeometry(0.15, 0.035, 8, 20), ribbonM); band.rotation.x = Math.PI / 2; band.position.set(0, 0.47, -0.05); head.add(band);
+  }
+  if (hair === 'dai') {
+    var lh = mesh(new T.BoxGeometry(0.92, 0.95, 0.16), hairM); lh.position.set(0, -0.42, -0.36); head.add(lh);
+    var lh2 = mesh(cyl(0.46, 0.46, 0.5, 20, 1), hairM); lh2.scale.z = 0.55; lh2.position.set(0, -0.1, -0.2); head.add(lh2);
+  }
+  if (hair === 'bim') {
+    [-1, 1].forEach(function (sd) {
+      for (var b = 0; b < 4; b++) { var bb = mesh(sph(0.12 - b * 0.012, 10, 8), hairM); bb.position.set(0.44 * sd, -0.32 - b * 0.17, -0.12); head.add(bb); }
+      var bow = mesh(new T.ConeGeometry(0.07, 0.12, 6), ribbonM); bow.position.set(0.44 * sd, -0.98, -0.12); bow.rotation.z = Math.PI; head.add(bow);
+    });
+  }
+  if (look.hat) {
+    var hat = mesh(new T.ConeGeometry(0.98, 0.52, 28, 1, true), hatM); hat.material.side = T.DoubleSide; hat.position.y = 0.6; head.add(hat);
+    var rim = mesh(new T.TorusGeometry(0.97, 0.02, 6, 32), hatD); rim.rotation.x = Math.PI / 2; rim.position.y = 0.34; head.add(rim);
+  }
   [-1, 1].forEach(function (sd) {
     var ear = mesh(sph(0.1, 10, 8), skinM); ear.position.set(0.52 * sd, -0.04, 0); head.add(ear);
     var eye = mesh(sph(0.075, 12, 10), eyeM, false); eye.scale.set(0.9, 1.25, 0.45); eye.position.set(0.18 * sd, -0.04, 0.48); head.add(eye);
@@ -169,9 +242,31 @@ function chibi(rb) {
     return { sh: sh, el: el, hand: hand };
   }
   var AL = arm(1), AR = arm(-1);
-  return { root: root, hips: hips, spine: spine, head: head, L: L, R: R, AL: AL, AR: AR,
+  var hand = look.hand || 'none';
+  if (hand === 'fan') {
+    var fan = new T.Group(); fan.position.set(0, -0.06, 0.04); fan.rotation.set(-1.25, 0, 0); AL.hand.add(fan);
+    var leaf = new T.Mesh(new T.RingGeometry(0.12, 0.62, 24, 1, Math.PI * 0.12, Math.PI * 0.76), fanM); leaf.castShadow = true; leaf.rotation.z = Math.PI * 0.0; leaf.position.y = 0; fan.add(leaf);
+    var edge = mesh(new T.TorusGeometry(0.62, 0.015, 6, 24, Math.PI * 0.76), fanEdge, false); edge.rotation.z = Math.PI * 0.12; fan.add(edge);
+    for (var fi = 0; fi < 9; fi++) { var fa2 = Math.PI * (0.12 + fi * 0.76 / 8); var rib = mesh(cyl(0.008, 0.008, 0.62, 4), stickM, false); rib.position.set(Math.cos(fa2) * 0.31, Math.sin(fa2) * 0.31, 0.004); rib.rotation.z = fa2 - Math.PI / 2; fan.add(rib); }
+  }
+  if (hand === 'lantern') {
+    var pole = mesh(cyl(0.02, 0.02, 1.1, 6), stickM); pole.position.set(0, 0.0, 0.45); pole.rotation.x = Math.PI / 2 - 0.35; AL.hand.add(pole);
+    var lg = new T.Group(); lg.position.set(0, -0.22, 0.98); AL.hand.add(lg);
+    var cord = mesh(cyl(0.006, 0.006, 0.18, 4), stickM, false); cord.position.y = 0.08; lg.add(cord);
+    var lan = mesh(sph(0.17, 14, 10), lanM, false); lan.scale.y = 1.25; lan.position.y = -0.12; lg.add(lan);
+    var lcap = mesh(cyl(0.08, 0.08, 0.04, 10), M('#9B3B2A'), false); lcap.position.y = 0.07; lg.add(lcap);
+    var lbot = lcap.clone(); lbot.position.y = -0.33; lg.add(lbot);
+  }
+  if (hand === 'lotus') {
+    var lot = new T.Group(); lot.position.set(0, 0.2, 0.42); spine.add(lot);
+    var pad = mesh(cyl(0.2, 0.2, 0.03, 16), leafM, false); lot.add(pad);
+    for (var li = 0; li < 7; li++) { var la = li / 7 * Math.PI * 2; var pt = mesh(new T.ConeGeometry(0.06, 0.24, 6), li % 2 ? lotusM : lotusD, false); pt.position.set(Math.cos(la) * 0.07, 0.12, Math.sin(la) * 0.07); pt.rotation.z = -Math.cos(la) * 0.45; pt.rotation.x = Math.sin(la) * 0.45; lot.add(pt); }
+    var core = mesh(sph(0.04, 8, 6), M('#F2C14E'), false); core.position.y = 0.1; lot.add(core);
+  }
+  return { root: root, hips: hips, spine: spine, head: head, L: L, R: R, AL: AL, AR: AR, look: look, lookKey: lookKey({ robe: rb.k, hair: hair, hat: !!look.hat, beads: !!look.beads, hand: hand }),
     cur: {}, walkP: 0, speed: 0, dirSign: 1, act: null, actT: 0, angle: 0 };
 }
+chibi.keyOf = function (l) { return lookKey({ robe: robeOf(l.robe).k, hair: l.hair || 'bui', hat: !!l.hat, beads: !!l.beads, hand: l.hand || 'none' }); };
 var JOINTS = ['hipY', 'spine', 'head', 'lsx', 'lsz', 'rsx', 'rsz', 'lel', 'rel', 'lhip', 'rhip', 'lkn', 'rkn'];
 function ease(t) { return t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t); }
 function seg(t, a, b) { return ease((t - a) / (b - a)); }
@@ -185,6 +280,12 @@ function pose(c, time) {
     p.lkn = 0.1 + 0.75 * Math.max(0, Math.sin(c.walkP + 1.6)) * k; p.rkn = 0.1 + 0.75 * Math.max(0, -Math.sin(c.walkP + 1.6)) * k;
     p.lsx = 0.5 * s * k + 0.05; p.rsx = -0.5 * s * k + 0.05; p.lel = -0.45; p.rel = -0.45;
     p.hipY = 0.95 + 0.05 * Math.abs(Math.cos(c.walkP)); p.spine = 0.08 * k;
+  }
+  var hd = c.look && c.look.hand;
+  if (hd && hd !== 'none') {
+    if (hd === 'fan') { p.lsx = -1.25; p.lsz = -0.15; p.lel = -0.75; }
+    if (hd === 'lantern') { p.lsx = -0.75; p.lsz = 0.3; p.lel = -0.35; }
+    if (hd === 'lotus') { p.lsx = -0.55; p.rsx = -0.55; p.lsz = -0.42; p.rsz = 0.42; p.lel = -1.15; p.rel = -1.15; }
   }
   var a = c.act, t = c.actT;
   function pray(w) {
@@ -230,20 +331,23 @@ function faceWater(c, dt) { faceTo(c, -Math.cos(c.angle), -Math.sin(c.angle), dt
 function faceWalk(c, dt) { faceTo(c, Math.sin(c.angle) * c.dirSign, -Math.cos(c.angle) * c.dirSign, dt); }
 
 /* ===================== Cá ===================== */
-function makeFish(col) {
-  var g = new T.Group(); var m = M(col, { roughness: 0.45 });
+function makeFish(fk) {
+  var sp = fishOf(fk);
+  var g = new T.Group(); var m = M(sp.body, { roughness: 0.45 });
   var b = mesh(sph(0.2, 16, 12), m); b.scale.set(0.55, 0.7, 1.6); g.add(b);
-  var belly = mesh(sph(0.16, 12, 10), M('#FFC08A')); belly.scale.set(0.5, 0.45, 1.4); belly.position.y = -0.06; g.add(belly);
+  var belly = mesh(sph(0.16, 12, 10), M(sp.belly)); belly.scale.set(0.5, 0.45, 1.4); belly.position.y = -0.06; g.add(belly);
+  if (sp.spot) { var spot = mesh(sph(0.1, 10, 8), M(sp.spot), false); spot.scale.set(0.9, 0.5, 1.4); spot.position.set(0, 0.1, 0.05); g.add(spot); }
+  if (sp.whisk) { [-1, 1].forEach(function (s2) { var wk = mesh(cyl(0.008, 0.004, 0.22, 4), M(sp.fin), false); wk.position.set(0.06 * s2, -0.02, 0.36); wk.rotation.x = 1.2; wk.rotation.z = 0.5 * s2; g.add(wk); }); }
   var tailG = new T.Group(); tailG.position.z = -0.3; g.add(tailG);
-  var tail = mesh(new T.ConeGeometry(0.18, 0.32, 4), M('#E4572E', { transparent: true, opacity: 0.9 })); tail.rotation.x = Math.PI / 2; tail.scale.set(0.25, 1, 1); tail.position.z = -0.12; tailG.add(tail);
-  var fin = mesh(new T.ConeGeometry(0.08, 0.22, 4), M('#E4572E')); fin.position.set(0, 0.14, 0.02); fin.scale.set(0.3, 1, 1.6); g.add(fin);
+  var tail = mesh(new T.ConeGeometry(0.18, 0.32, 4), M(sp.fin, { transparent: true, opacity: 0.9 })); tail.rotation.x = Math.PI / 2; tail.scale.set(0.25, 1, 1); tail.position.z = -0.12; tailG.add(tail);
+  var fin = mesh(new T.ConeGeometry(0.08, 0.22, 4), M(sp.fin)); fin.position.set(0, 0.14, 0.02); fin.scale.set(0.3, 1, 1.6); g.add(fin);
   [-1, 1].forEach(function (s) { var e = mesh(sph(0.025, 8, 6), eyeM, false); e.position.set(0.09 * s, 0.04, 0.26); g.add(e); });
   g.userData.tail = tailG; return g;
 }
 function handPos(c) { var v = new T.Vector3(), w = new T.Vector3(); c.AL.hand.getWorldPosition(v); c.AR.hand.getWorldPosition(w); return v.add(w).multiplyScalar(0.5); }
-function startThrow(c, isMe, back) {
+function startThrow(c, isMe, back, fk) {
   act(c, 'throw');
-  var f = makeFish(isMe ? '#E4572E' : ['#F08A3C', '#F2B33D', '#FBF6F0'][Math.floor(Math.random() * 3)]);
+  var f = makeFish(fk || 'chepdo');
   scene.add(f);
   var F = { obj: f, owner: c, t: 0, state: 'held', isMe: isMe, back: !!back, turn: Math.random() < 0.5 ? 1 : -1 };
   S.fish.push(F);
@@ -273,7 +377,7 @@ function updateFish(dt) {
         F.ang = Math.atan2(o.position.z, o.position.x); F.r = Math.hypot(o.position.x, o.position.z);
         if (F.isMe) (function (fx) {
           setTimeout(function () {
-            if (fx.back) toast('Chú cá chép quay lại tạ ơn bạn', 'Cá đang lượn quanh chờ bạn. Niệm “A Di Đà Phật” để tiễn cá đi.');
+            if (fx.back) toast('Chú ' + fishOf(S.fishK).name.toLowerCase() + ' quay lại tạ ơn bạn', 'Cá đang lượn quanh chờ bạn. Niệm “A Di Đà Phật” để tiễn cá đi.');
             else toast('Chú cá đã về với dòng sông', 'Mong chú cá bơi đi bình an, tự tại.');
           }, 900);
         })(F);
@@ -375,15 +479,16 @@ var myBub = document.createElement('div'); myBub.className = 'bub'; myBub.hidden
 var relBub = document.createElement('div'); relBub.className = 'bub'; relBub.hidden = true; labelsEl.appendChild(relBub);
 function spawnMe() {
   if (me) scene.remove(me.root);
-  me = chibi(robeOf(S.robe)); me.angle = Math.random() * Math.PI * 2; placeOnPath(me); me.root.rotation.y = Math.atan2(-Math.cos(me.angle), -Math.sin(me.angle));
+  var keepA = me ? me.angle : Math.random() * Math.PI * 2, keepR = me ? me.root.rotation.y : null;
+  me = chibi(S.look); me.angle = keepA; placeOnPath(me); me.root.rotation.y = keepR !== null ? keepR : Math.atan2(-Math.cos(me.angle), -Math.sin(me.angle));
   scene.add(me.root);
   $('meName').textContent = S.name; $('meAv').textContent = (S.name.trim()[0] || 'T').toUpperCase(); $('meAv').style.background = robeOf(S.robe).robe;
 }
 function getRemote(id, info) {
   var r = remotes[id];
   if (!r) {
-    var rb = robeOf(info && info.robe);
-    r = chibi(rb); r.id = id; r.name = (info && info.name) || 'Bạn đồng tu'; r.robeK = rb.k;
+    var lk = (info && info.look) || { robe: info && info.robe };
+    r = chibi(lk); r.id = id; r.name = (info && info.name) || 'Bạn đồng tu';
     r.angle = info && typeof info.a === 'number' ? info.a : 0; r.netA = r.angle; r.netV = 0;
     placeOnPath(r); scene.add(r.root);
     r.tag = document.createElement('div'); r.tag.className = 'tag'; r.tag.textContent = r.name; labelsEl.appendChild(r.tag);
@@ -391,10 +496,11 @@ function getRemote(id, info) {
     remotes[id] = r; renderCount();
   } else if (info) {
     if (info.name && info.name !== r.name) { r.name = info.name; r.tag.textContent = r.name; }
-    if (info.robe && info.robe !== r.robeK) {          // đổi trang phục: dựng lại nhân vật
-      var keep = { angle: r.angle, netA: r.netA, netV: r.netV };
-      removeRemote(id); r = getRemote(id, { name: info.name, robe: info.robe, a: keep.angle });
-      r.netA = keep.netA; r.netV = keep.netV;
+    var nl = info.look || (info.robe ? { robe: info.robe } : null);
+    if (nl && chibi.keyOf(nl) !== r.lookKey) {          // đổi trang phục: dựng lại nhân vật
+      var keep = { angle: r.angle, netA: r.netA, netV: r.netV, rot: r.root.rotation.y };
+      removeRemote(id); r = getRemote(id, { name: info.name, look: nl, a: keep.angle });
+      r.netA = keep.netA; r.netV = keep.netV; r.root.rotation.y = keep.rot;
     }
   }
   return r;
@@ -413,7 +519,7 @@ var SAY = { pray: 'Chắp tay tùy hỷ', bow: 'Cúi chào', niem: 'A Di Đà Ph
 /* ===================== Mạng ===================== */
 var Net = { ws: null, id: 0, hostId: 0, isHost: false, leaving: false, lastSt: 0 };
 function send(o) { if (Net.ws && Net.ws.readyState === 1) Net.ws.send(JSON.stringify(o)); }
-function helloMsg(to) { var o = { t: 'hello', name: S.name, robe: S.robe, a: me ? me.angle : 0 }; if (to) o.to = to; return o; }
+function helloMsg(to) { var o = { t: 'hello', name: S.name, robe: S.look.robe, look: S.look, a: me ? me.angle : 0 }; if (to) o.to = to; return o; }
 function connect(url, lakeTitle) {
   $('joinErr').hidden = true;
   var ws;
@@ -457,7 +563,7 @@ function handle(o) {
     case 'act':
       r = remotes[o.from]; if (!r) break;
       if (o.n === 'throw') {
-        startThrow(r, false, o.back);
+        startThrow(r, false, o.back, o.fk);
         S.ev = { c: r, t: 0, done: false, seen: false };
       } else if (ACT_LEN[o.n]) {
         act(r, o.n);
@@ -494,10 +600,10 @@ var lakes = {};
 function lobbyError(msg) { $('joinErr').textContent = msg; $('joinErr').hidden = !msg; }
 function renderRobes() {
   $('robes').innerHTML = '';
-  ROBES.forEach(function (rb) {
-    var b = document.createElement('button'); b.type = 'button'; b.className = 'robe' + (rb.k === S.robe ? ' on' : '');
+  ROBES.filter(function (rb) { return S.owned[rb.k]; }).forEach(function (rb) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'robe' + (rb.k === S.look.robe ? ' on' : '');
     b.innerHTML = '<i style="background:' + rb.robe + '"></i>' + rb.name;
-    b.addEventListener('click', function () { S.robe = rb.k; store.set('robe', S.robe); renderRobes(); });
+    b.addEventListener('click', function () { S.look.robe = rb.k; saveLook(); renderRobes(); });
     $('robes').appendChild(b);
   });
 }
@@ -551,6 +657,7 @@ function enterLake(title) {
   $('lakeName').textContent = S.hosting && S.hostIp ? title + ' · ' + S.hostIp : title;
   renderHUD(); renderCount();
   try { if (A) A.stopDiscovery(); } catch (e) { /* bỏ qua */ }
+  if (window.HAL && HAL.onEnter) HAL.onEnter();
 }
 function exitLake(msg) {
   S.inLake = false; Net.leaving = true;
@@ -560,6 +667,7 @@ function exitLake(msg) {
   S.hosting = false; S.hostIp = '';
   clearRemotes(); clearTrash();
   S.fish.forEach(function (F) { scene.remove(F.obj); }); S.fish = [];
+  if (window.HAL && HAL.onExit) HAL.onExit();
   $('hud').hidden = true; $('lobby').hidden = false; $('hintL').hidden = $('hintR').hidden = true;
   lobbyError(msg || '');
   lakes = {}; renderLakes();
@@ -568,11 +676,12 @@ function exitLake(msg) {
 $('leave').addEventListener('click', function () { exitLake(''); });
 
 /* ===================== Giao diện trong hồ ===================== */
-function addPhuoc(n) { S.phuoc += n; store.set('phuoc', S.phuoc); renderHUD(); }
-function renderCount() { $('count').textContent = (1 + Object.keys(remotes).length) + ' người đang ở hồ'; }
+function addPhuoc(n) { S.phuoc += n; if (n > 0) { S.prog.earned += n; saveProg(); } store.set('phuoc', S.phuoc); renderHUD(); if (window.HAL && HAL.onChange) HAL.onChange(); }
+function renderCount() { $('count').textContent = (1 + Object.keys(remotes).length) + ' người ở hồ'; }
 function renderHUD() {
   $('phuoc').textContent = S.phuoc.toLocaleString('vi-VN');
   $('bag').textContent = S.bag;
+  var fsp = fishOf(S.fishK); $('fishName').textContent = fsp.name; $('fishDot').style.background = fsp.body;
   var d = ''; for (var i = 0; i < 5; i++) d += '<span class="dot' + (i < S.turns ? '' : ' e') + '"></span>';
   $('dots').innerHTML = d;
   var busy = me && me.act === 'throw';
@@ -589,7 +698,7 @@ function myAct(name) {
   act(me, name); send({ t: 'act', n: name }); showBubble(myBub, SAY[name]);
   if (S.ev && S.ev.seen && !S.ev.done) {
     S.ev.done = true; S.ev.doneAt = S.ev.t;
-    var c = S.ev.c; addPhuoc(2);
+    var c = S.ev.c; addPhuoc(2); S.prog.tuyhy++; saveProg();
     send({ t: 'tuyhy', to: c.id });
     toast('Tùy hỷ +2 phước', c.name + ' cũng nhận +2 phước');
     sparkles(me, c); renderHUD();
@@ -612,8 +721,10 @@ $('go').addEventListener('click', function () {
   }
   walkDir = 0;
   var back = Math.random() < 0.25;
-  startThrow(me, true, back);
-  send({ t: 'act', n: 'throw', back: back });
+  startThrow(me, true, back, S.fishK);
+  send({ t: 'act', n: 'throw', back: back, fk: S.fishK });
+  var st = S.stats[S.fishK] || { rel: 0, back: 0, tf: 0 }; st.rel++; if (back) st.back++; S.stats[S.fishK] = st; store.set('stats', S.stats);
+  S.prog.rel++; saveProg();
   S.turns--; saveTurns(); renderHUD();
 });
 
@@ -723,7 +834,7 @@ function frame() {
     camera.position.set(Math.cos(ca) * 40, 16, Math.sin(ca) * 40); camera.lookAt(0, 2, 0);
     sun.position.set(-40, 48, 30); sun.target.position.set(0, 0, 0);
   }
-  renderer.render(scene, camera);
+  if (!(window.HAL && HAL.covered)) renderer.render(scene, camera);
 
   if (S.inLake && me) {
     Object.keys(remotes).forEach(function (id) {
@@ -752,4 +863,41 @@ function frame() {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+function makePreview(cv) {
+  var r2 = new T.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+  r2.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  var sc2 = new T.Scene();
+  sc2.add(new T.HemisphereLight(0xFFF1DE, 0x8AA88A, 0.9));
+  var dl = new T.DirectionalLight(0xFFE2BC, 0.8); dl.position.set(3, 6, 5); sc2.add(dl);
+  var ped = mesh(cyl(1.25, 1.35, 0.22, 40), M('#F4B6C8'), false); ped.position.y = -0.11; sc2.add(ped);
+  var ped2 = mesh(cyl(1.05, 1.05, 0.03, 40), M('#F2C14E'), false); ped2.position.y = 0.01; sc2.add(ped2);
+  var cam2 = new T.PerspectiveCamera(32, 1, 0.1, 50); cam2.position.set(0, 1.75, 6.6); cam2.lookAt(0, 1.3, 0);
+  var ch = null, alive = true, last = performance.now(), tt = 0, spin = 0;
+  function set(look) { if (ch) sc2.remove(ch.root); ch = chibi(look); sc2.add(ch.root); }
+  function size() { var w = cv.clientWidth || 300, h = cv.clientHeight || 300; r2.setSize(w, h, false); cam2.aspect = w / h; cam2.updateProjectionMatrix(); }
+  function loop(now) {
+    if (!alive) return;
+    var d = Math.min(0.05, (now - last) / 1000); last = now; tt += d;
+    if (ch) { spin += d * 0.35; ch.root.rotation.y = Math.sin(spin) * 0.6; applyPose(ch, d, tt); }
+    size(); r2.render(sc2, cam2);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  return {
+    set: set,
+    wave: function (n) { if (ch) act(ch, n); },
+    stop: function () { alive = false; r2.dispose(); }
+  };
+}
+
+window.HAL = {
+  S: S, store: store, ROBES: ROBES, HAIRS: HAIRS, ACCS: ACCS, FISH: FISH, UNLOCK_ALL_FISH: UNLOCK_ALL_FISH,
+  fishOf: fishOf, needMet: needMet, today: today,
+  addPhuoc: addPhuoc, saveTurns: saveTurns, saveLook: saveLook, saveProg: saveProg, renderHUD: renderHUD, toast: toast,
+  applyLook: function () { saveLook(); if (S.inLake) { spawnMe(); send(helloMsg()); } renderRobes(); },
+  setFish: function (k) { S.fishK = k; store.set('fishK', k); renderHUD(); },
+  makePreview: makePreview,
+  covered: false
+};
 })();
