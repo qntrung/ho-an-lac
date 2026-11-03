@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cho phép kết nối ws:// không mã hóa trong mạng Wi-Fi nội bộ -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

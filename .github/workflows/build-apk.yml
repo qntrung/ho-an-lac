@@ -1,0 +1,49 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "HoAnLac-build${{ github.run_number }}.apk"
+
+      - name: Upload APK (Actions artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HoAnLac-apk
+          path: HoAnLac-build${{ github.run_number }}.apk
+
+      - name: Publish to Releases (tải thẳng trên điện thoại)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Hồ An Lạc · bản thử ${{ github.run_number }}
+          body: |
+            Bản thử Hồ An Lạc cho Android. Tải file .apk bên dưới về điện thoại, mở để cài.
+            Mọi người cùng một Wi-Fi: một người bấm "Mở hồ", những người khác chọn hồ trong danh sách để vào.
+          prerelease: true
+          files: HoAnLac-build${{ github.run_number }}.apk

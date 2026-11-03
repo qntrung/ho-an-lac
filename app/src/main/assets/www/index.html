@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Hồ An Lạc</title>
+<style>
+:root{
+  --ink:#23403F; --ink-2:#3E5654; --jade:#1F5C5A; --jade-soft:#E2F0EE;
+  --saffron:#E39B2E; --saffron-soft:#FFF4E2; --saffron-ink:#7A4E12;
+  --paper:#FFFFFF; --glass:rgba(255,255,255,.92); --sky:#F6DDBE; --line:#CFE0DE;
+  --display:'Baloo 2', 'Be Vietnam Pro', system-ui, sans-serif;
+  --body:'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+html,body{height:100%;margin:0;background:var(--sky);overflow:hidden}
+body{font-family:var(--body);color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#hud{position:fixed;inset:0;pointer-events:none;padding:calc(env(safe-area-inset-top,0px) + 12px) max(14px, env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 10px) max(14px, env(safe-area-inset-left,0px));display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.me{display:flex;align-items:center;gap:10px;background:var(--glass);border-radius:28px;padding:5px 14px 5px 5px;box-shadow:0 4px 14px rgba(31,92,90,.15)}
+.av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 17px var(--display)}
+.name{font:700 16px/1.1 var(--display)}
+.sub{font-size:12px;color:var(--ink-2)}
+.right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.pill{display:flex;align-items:center;gap:6px;background:var(--paper);border-radius:999px;padding:5px 12px 5px 9px;font:700 15px var(--display);box-shadow:0 4px 14px rgba(31,92,90,.15)}
+.pill.small{font:600 12px var(--body);padding:4px 10px;background:var(--glass)}
+.dots{display:flex;gap:4px}.dot{width:9px;height:9px;border-radius:50%;background:var(--saffron)}.dot.e{background:transparent;border:1.5px solid #B9853A;box-sizing:border-box}
+.chips{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
+.chip{background:var(--glass);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+.live{width:7px;height:7px;border-radius:50%;background:#4E9A6A;box-shadow:0 0 0 3px rgba(78,154,106,.2)}
+.leave{pointer-events:auto;border:0;background:var(--glass);border-radius:999px;padding:5px 12px;font:600 12px var(--body);color:var(--jade)}
+.bottom{pointer-events:auto;background:var(--paper);border-radius:24px;padding:12px;display:flex;flex-direction:column;gap:10px;box-shadow:0 -6px 24px rgba(31,64,63,.18);max-width:520px;width:100%;margin:0 auto;box-sizing:border-box}
+.row{display:flex;gap:8px;align-items:center}
+.walk{flex:none;width:58px;height:58px;border-radius:29px;border:1.5px solid var(--line);background:#F3F8F7;color:var(--jade);display:grid;place-items:center;touch-action:none}
+.walk.on{background:var(--jade-soft);border-color:var(--jade)}
+.go{flex:1;height:58px;border:0;border-radius:29px;background:var(--jade);color:#fff;font:800 19px var(--display);box-shadow:0 6px 14px rgba(31,92,90,.28)}
+.go:disabled{opacity:.6}
+.gest{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.gest button{height:46px;border-radius:999px;border:1.5px solid var(--line);background:#F3F8F7;color:var(--jade);font:600 14px var(--body);white-space:nowrap;padding:0 6px}
+.gest button.hl{border-color:var(--saffron);background:var(--saffron-soft);color:var(--saffron-ink);animation:pulse 1.3s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(227,155,46,.5)}50%{box-shadow:0 0 0 7px rgba(227,155,46,0)}}
+.foot{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-2);gap:8px}
+.bag{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink)}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 120px);transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;background:rgba(255,255,255,.96);border-radius:18px;padding:10px 14px;text-align:center;box-shadow:0 6px 18px rgba(31,92,90,.18);transition:opacity .35s;opacity:0;pointer-events:none}
+#toast.show{opacity:1}
+#toast b{display:block;font:700 16px/1.2 var(--display);color:var(--saffron-ink)}
+#toast span{display:block;font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.hint{position:fixed;top:44%;display:flex;align-items:center;gap:6px;background:var(--saffron-soft);border:1.5px solid var(--saffron);color:var(--saffron-ink);border-radius:999px;padding:6px 12px;font:600 12.5px var(--body)}
+.hint.l{left:10px}.hint.r{right:10px}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.tag{position:absolute;transform:translate(-50%,-100%);background:rgba(255,255,255,.92);border-radius:999px;padding:2px 9px;font:600 11px var(--body);color:var(--jade);white-space:nowrap}
+.tag.rel{background:var(--saffron-soft);color:var(--saffron-ink);box-shadow:0 0 0 2px var(--saffron)}
+.bub{position:absolute;transform:translate(-50%,-100%);background:#fff;border-radius:14px;padding:6px 12px;font:600 13px var(--body);color:var(--jade);white-space:nowrap;box-shadow:0 4px 12px rgba(31,92,90,.18)}
+.bub::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:#fff;border-bottom:0}
+[hidden]{display:none!important}
+
+/* Sảnh vào hồ */
+#lobby{position:fixed;inset:0;z-index:20;overflow-y:auto;background:linear-gradient(180deg,#BFDFE6 0%,#F3E9D9 55%,#FCE6CC 100%);padding:calc(env(safe-area-inset-top,0px) + 28px) 18px calc(env(safe-area-inset-bottom,0px) + 24px);box-sizing:border-box}
+.lb{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.lb h1{margin:0;font:800 34px/1.05 var(--display);color:var(--ink)}
+.lb .lead{margin:0;font-size:14px;color:var(--ink-2);line-height:1.45}
+.card{background:var(--paper);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 6px 18px rgba(31,92,90,.12)}
+.card h2{margin:0;font:700 17px var(--display)}
+label{font-size:12.5px;font-weight:600;color:var(--ink-2)}
+input[type=text]{height:46px;border-radius:12px;border:1.5px solid var(--line);padding:0 12px;font:500 16px var(--body);color:var(--ink);background:#F8FBFA;box-sizing:border-box;width:100%}
+input[type=text]:focus{outline:2px solid var(--jade);border-color:var(--jade)}
+.robes{display:flex;gap:10px;flex-wrap:wrap}
+.robe{display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:none;font:500 11.5px var(--body);color:var(--ink-2);padding:0}
+.robe i{width:42px;height:42px;border-radius:50%;display:block;box-shadow:inset 0 0 0 3px #fff, 0 0 0 1.5px var(--line)}
+.robe.on i{box-shadow:inset 0 0 0 3px #fff, 0 0 0 3px var(--jade)}
+.btn{height:50px;border:0;border-radius:25px;background:var(--jade);color:#fff;font:800 17px var(--display)}
+.btn.ghost{background:#F3F8F7;color:var(--jade);border:1.5px solid var(--line);font:600 14px var(--body);height:44px}
+.lakes{display:flex;flex-direction:column;gap:8px}
+.lake{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);border-radius:14px;padding:10px 12px}
+.lake b{display:block;font:700 15px var(--display)}
+.lake span{font-size:12px;color:var(--ink-2)}
+.lake .btn{height:40px;padding:0 18px;font-size:15px;margin-left:auto}
+.empty{font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:8px}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--jade);animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.manual{display:flex;gap:8px}
+.manual input{flex:1}
+.manual .btn{height:46px;padding:0 16px;font-size:15px}
+.err{color:#A3361F;font-size:13px}
+.note{font-size:12px;color:var(--ink-2);line-height:1.45}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="labels"></div>
+
+<div id="hud" hidden>
+  <div>
+    <div class="top">
+      <div class="me"><div class="av" id="meAv">T</div><div><div class="name" id="meName">Tịnh Tâm</div><div class="sub" id="lakeName">Hồ An Lạc</div></div></div>
+      <div class="right">
+        <div class="pill"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C9567A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19 C8 16 7.5 11 12 6 C16.5 11 16 16 12 19 Z"/><path d="M12 19 C7 19 3.5 16 3 12 C6.5 12 9.5 14.5 12 19"/><path d="M12 19 C17 19 20.5 16 21 12 C17.5 12 14.5 14.5 12 19"/></svg><span id="phuoc">0</span> phước</div>
+        <div class="pill small">Lượt thả <span class="dots" id="dots"></span></div>
+      </div>
+    </div>
+    <div class="chips"><span class="chip"><span class="live"></span><span id="count">1 người đang ở hồ</span></span><button class="leave" id="leave" type="button">Rời hồ</button></div>
+  </div>
+  <div class="bottom">
+    <div class="row">
+      <button class="walk" id="wl" type="button" aria-label="Đi dạo sang trái"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg></button>
+      <button class="go" id="go" type="button">Thả cá</button>
+      <button class="walk" id="wr" type="button" aria-label="Đi dạo sang phải"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5 L16 12 L9 19"/></svg></button>
+    </div>
+    <div class="gest">
+      <button type="button" id="gChap">Chắp tay</button>
+      <button type="button" id="gCui">Cúi chào</button>
+      <button type="button" id="gNiem">A Di Đà Phật</button>
+    </div>
+    <div class="foot">
+      <span>Giữ mũi tên để đi dạo · chạm rác để nhặt</span>
+      <span class="bag"><svg width="18" height="18" viewBox="0 0 34 34"><path d="M9 12 L25 12 L24 29 C24 30.5 23 31 21.5 31 L12.5 31 C11 31 10 30.5 10 29 Z" fill="#5E9F5A"/><path d="M14 8 C14 5 20 5 20 8 L20 12 M14 8 L14 12" stroke="#3F7A44" stroke-width="1.8" fill="none"/></svg>Túi rác <span id="bag">0</span>/8</span>
+    </div>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"><b id="tt"></b><span id="ts"></span></div>
+<div class="hint l" id="hintL" hidden></div>
+<div class="hint r" id="hintR" hidden></div>
+
+<div id="lobby">
+  <div class="lb">
+    <div>
+      <h1>Hồ An Lạc</h1>
+      <p class="lead">Phóng sinh cá cùng bạn bè trong cùng mạng Wi-Fi. Một người mở hồ, những người khác vào cùng.</p>
+    </div>
+    <div class="card">
+      <h2>Bạn là ai</h2>
+      <label for="inName">Tên hiển thị</label>
+      <input type="text" id="inName" maxlength="16" value="Tịnh Tâm" autocomplete="off">
+      <label>Trang phục</label>
+      <div class="robes" id="robes"></div>
+    </div>
+    <div class="card">
+      <h2>Mở hồ của bạn</h2>
+      <p class="note">Máy bạn làm chủ hồ. Mọi người cùng Wi-Fi sẽ thấy hồ của bạn trong danh sách.</p>
+      <button class="btn" id="btnHost" type="button">Mở hồ</button>
+      <div class="err" id="hostErr" hidden></div>
+    </div>
+    <div class="card">
+      <h2>Hồ quanh đây</h2>
+      <div class="lakes" id="lakes"></div>
+      <div class="empty" id="scanning"><span class="spin"></span>Đang tìm hồ trong cùng Wi-Fi…</div>
+      <label for="inIp">Hoặc nhập địa chỉ của chủ hồ</label>
+      <div class="manual"><input type="text" id="inIp" placeholder="192.168.1.5" inputmode="decimal" autocomplete="off"><button class="btn" id="btnIp" type="button">Vào</button></div>
+      <div class="err" id="joinErr" hidden></div>
+      <p class="note">Không thấy hồ? Kiểm tra mọi người đang cùng một Wi-Fi. Một số Wi-Fi công cộng chặn các máy thấy nhau; khi đó hãy dùng điểm phát Wi-Fi từ điện thoại của chủ hồ.</p>
+    </div>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

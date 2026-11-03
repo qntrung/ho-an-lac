@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Biểu tượng: hoa sen trên mặt hồ -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#1F5C5A" android:pathData="M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z" />
+    <path android:fillColor="#8FCFD1" android:pathData="M14,70 Q54,58 94,70 L94,80 Q54,96 14,80 Z" />
+    <path android:fillColor="#F4B6C8" android:pathData="M54,70 C42,62 40,46 54,30 C68,46 66,62 54,70 Z" />
+    <path android:fillColor="#F7C6D4" android:pathData="M54,72 C40,72 30,64 28,54 C38,54 48,60 54,72 Z" />
+    <path android:fillColor="#F7C6D4" android:pathData="M54,72 C68,72 78,64 80,54 C70,54 60,60 54,72 Z" />
+    <path android:fillColor="#E39B2E" android:pathData="M50,66 h8 v4 h-8 z" />
+</vector>
