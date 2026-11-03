@@ -23,7 +23,7 @@ Yêu cầu Android 7.0 trở lên.
 Trong hồ:
 
 - Giữ hai nút mũi tên để đi dạo quanh hồ.
-- **Thả cá**: mỗi ngày 5 lượt, hết lượt thì đổi 100 phước lấy 1 lượt. Khoảng 1/4 số lần cá quay lại lượn vòng tạ ơn, bấm **A Di Đà Phật** để tiễn cá.
+- **Thả cá**: nhân vật bước ra mép nước, quỳ một gối, hạ hai tay xuống mặt nước rồi mở tay cho cá bơi đi, sau đó chắp tay; máy quay hạ thấp nhìn ngang. Mỗi ngày 5 lượt, hết lượt thì đổi 100 phước lấy 1 lượt. Khoảng 1/4 số lần cá quay lại lượn vòng tạ ơn, bấm **A Di Đà Phật** để tiễn cá.
 - Khi người khác thả cá trong tầm nhìn, ba nút **Chắp tay / Cúi chào / A Di Đà Phật** sáng lên. Bấm để tùy hỷ: cả hai cùng được +2 phước. Người ở khuất có mũi tên chỉ hướng.
 - **Nhặt rác**: đi lại gần rồi chạm vào rác trên bờ. Đầy túi 8 món được +5 phước. Rác do chủ hồ quản lý, ai nhặt trước thì được.
 - Phước, túi rác, tên và trang phục được lưu trên từng máy.
@@ -31,7 +31,7 @@ Trong hồ:
 Thanh menu dưới cùng có 4 mục:
 
 - **Hồ**: cảnh 3D chơi chung.
-- **Tích phước**: số phước, đổi 100 phước lấy 1 lượt thả; các hoạt động *Thắp hương* (kéo nén hương chạm ngọn nến rồi cắm vào bát hương, +20 phước mỗi ngày, tính chuỗi ngày), *Gõ mõ* (gõ đúng nhịp 16 tiếng, +15, đúng từ 12 tiếng +5), *Thiền* (3/5/10 phút, chạm màn hình là ngắt; có nút tua nhanh cho bản thử). *Nhặt rác* và *Tùy hỷ* dẫn ra hồ.
+- **Tích phước**: số phước, đổi 100 phước lấy 1 lượt thả; các hoạt động *Thắp hương* (kéo nén hương chạm ngọn nến rồi cắm vào bát hương, +20 phước mỗi ngày, tính chuỗi ngày), *Gõ mõ* (ngồi xếp bằng trong chánh điện 3D, gõ theo câu “Nam Mô A Di Đà Phật. Nam Mô Đại Từ Đại Bi Quán Thế Âm Bồ Tát”, 17 tiếng, +15, đúng nhịp từ 13 tiếng +5), *Thiền* (ngồi xếp bằng chắp tay trên tảng đá bên hồ lúc đêm, 3/5/10 phút, chạm màn hình là ngắt; có nút tua nhanh cho bản thử). *Nhặt rác* và *Tùy hỷ* dẫn ra hồ.
 - **Trang phục**: áo, phụ kiện (chuỗi hạt, nón lá, quạt giấy, đèn lồng, hoa sen), kiểu tóc; xem thử trên nhân vật 3D, mở khóa bằng phước hoặc thành tích. Trang phục hiện trên nhân vật ở hồ và người khác cũng thấy.
 - **Bộ sưu tập cá**: 9 loài cá, số lần đã thả và cá quay lại tạ ơn; chọn loài để thả (màu cá ở hồ đổi theo). Bản thử mở sẵn mọi loài.
 
@@ -55,6 +55,7 @@ app/src/main/assets/www/
   index.html          sảnh + giao diện trong hồ
   game.js             cảnh 3D (Three.js r128), nhân vật có khớp, trang phục 3D, mạng
   screens.js          Tích phước (thắp hương, gõ mõ, thiền), Trang phục, Bộ sưu tập cá
+  art.js              hình vẽ đã duyệt: 9 loài cá, biểu tượng kiểu tóc
   three.min.js        Three.js đóng gói sẵn, không cần Internet
 server/server.js      server thử trên máy tính, giống hệt LakeServer
 .github/workflows/build-apk.yml   build APK trên GitHub
@@ -70,7 +71,7 @@ Server chỉ chuyển tiếp: thêm trường `from` (id người gửi); có `t
 | `join` / `leave` | server | `id` người vào / ra |
 | `hello` | người chơi | `name`, `robe`, `a` (góc trên lối đi) |
 | `st` | người chơi, 10 lần/giây | `a` góc, `v` tốc độ, `d` hướng đi |
-| `act` | người chơi | `n`: `throw` (kèm `back`), `pray`, `bow`, `niem`, `pick` |
+| `act` | người chơi | `n`: `throw` = thả cá (kèm `back`, `fk`), `pray`, `bow`, `niem`, `pick` |
 | `tuyhy` | người tùy hỷ | gửi riêng `to` người thả cá |
 | `trash` / `tnew` / `gone` | chủ hồ | danh sách rác, rác mới, rác đã có người nhặt (`by`) |
 | `pick` | người chơi | xin nhặt rác `i`, gửi riêng cho chủ hồ |
@@ -89,5 +90,4 @@ Cần Android Studio (hoặc JDK 17 + Android SDK + Gradle 8.7): mở thư mục
 
 ## Việc tiếp theo
 
-- Thay nhân vật khối đơn giản bằng mô hình 3D có xương (khớp mượt), chỉnh camera xa hơn, cây không che tầm nhìn.
 - Thêm hoạt cảnh hóa thân (hoa sen, đèn hoa đăng, hạc trắng, hóa rồng).

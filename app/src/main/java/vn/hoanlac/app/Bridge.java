@@ -42,6 +42,21 @@ public class Bridge {
         return WS_PORT;
     }
 
+    /** Phần thanh trạng thái đè lên WebView (đơn vị px CSS); 0 nếu trang nằm dưới thanh trạng thái. */
+    @JavascriptInterface
+    public float insetTop() {
+        try {
+            android.view.WindowInsets wi = web.getRootWindowInsets();
+            if (wi == null) return 0;
+            int[] loc = new int[2];
+            web.getLocationOnScreen(loc);
+            int over = Math.max(0, wi.getSystemWindowInsetTop() - loc[1]);
+            return over / activity.getResources().getDisplayMetrics().density;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     /** Mở hồ trên máy này. Trả về địa chỉ IP, hoặc chuỗi bắt đầu bằng "ERR:" nếu lỗi. */
     @JavascriptInterface
     public synchronized String startHost(String lakeName) {
