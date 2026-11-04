@@ -53,6 +53,12 @@ var FISH = [
 ];
 // Bản thử cho bạn bè: mở sẵn mọi loài cá
 var UNLOCK_ALL_FISH = true;
+// Bản thử: chủ hồ thả cá không giới hạn lượt (người khác vẫn 5 lượt mỗi ngày)
+var HOST_UNLIMITED_TURNS = true;
+// Bản thử: phước vô hạn (hiện ∞, tiêu không bị trừ; phước kiếm thêm vẫn tính vào tiến độ) và mở sẵn mọi trang phục.
+// Hai cờ này chỉ đổi trong bộ nhớ, không ghi đè phước / đồ đã có trong máy: tắt cờ là trở lại như cũ.
+var INFINITE_PHUOC = true, UNLOCK_ALL_ITEMS = true, PHUOC_INF = 999999;
+function freeTurns() { return HOST_UNLIMITED_TURNS && !!(Net && Net.isHost); }
 function fishOf(k) { for (var i = 0; i < FISH.length; i++) if (FISH[i].k === k) return FISH[i]; return FISH[0]; }
 function robeOf(k) { for (var i = 0; i < ROBES.length; i++) if (ROBES[i].k === k) return ROBES[i]; return ROBES[0]; }
 function today() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
@@ -68,6 +74,8 @@ var S = {
   prog: store.get('prog', { rel: 0, tuyhy: 0, streak: 0, lastIncense: '', earned: 0 }),
   ev: null, fish: [], returning: null, inLake: false, hosting: false, nextEv: 0
 };
+if (UNLOCK_ALL_ITEMS) [ROBES, HAIRS, ACCS].forEach(function (list) { list.forEach(function (it) { S.owned[it.k] = 1; }); });
+if (INFINITE_PHUOC) S.phuoc = PHUOC_INF;
 (function loadTurns() { var t = store.get('turns', null); S.turns = (t && t.d === today()) ? t.n : 5; })();
 function saveTurns() { store.set('turns', { d: today(), n: S.turns }); }
 if (!S.look) S.look = { robe: S.robe, hair: 'bui', hat: false, beads: true, hand: 'none' };
@@ -1309,6 +1317,7 @@ function handle(o) {
       Net.id = o.id; Net.isHost = !!o.host; Net.hostId = o.hostId || (o.host ? o.id : 0);
       send(helloMsg());
       if (Net.isHost) hostInitTrash();
+      renderHUD();            // biết mình là chủ hồ rồi mới vẽ lại nút thả cá (cờ thả không giới hạn)
       break;
     case 'join':
       send(helloMsg(o.id));
@@ -1444,17 +1453,20 @@ function exitLake(msg) {
 $('leave').addEventListener('click', function () { exitLake(''); });
 
 /* ===================== Giao diện trong hồ ===================== */
-function addPhuoc(n) { S.phuoc += n; if (n > 0) { S.prog.earned += n; saveProg(); } store.set('phuoc', S.phuoc); renderHUD(); if (window.HAL && HAL.onChange) HAL.onChange(); }
+function addPhuoc(n) {
+  if (INFINITE_PHUOC) { if (n > 0) { S.prog.earned += n; saveProg(); } renderHUD(); if (window.HAL && HAL.onChange) HAL.onChange(); return; }
+  S.phuoc += n; if (n > 0) { S.prog.earned += n; saveProg(); } store.set('phuoc', S.phuoc); renderHUD(); if (window.HAL && HAL.onChange) HAL.onChange(); }
 function renderCount() { $('count').textContent = (1 + Object.keys(remotes).length) + ' người ở hồ'; }
 function renderHUD() {
-  $('phuoc').textContent = S.phuoc.toLocaleString('vi-VN');
+  $('phuoc').textContent = INFINITE_PHUOC ? '∞' : S.phuoc.toLocaleString('vi-VN');
   $('bag').textContent = S.bag;
   var fsp = fishOf(S.fishK); $('fishName').textContent = fsp.name; $('fishDot').style.background = fsp.body;
   var d = ''; for (var i = 0; i < 5; i++) d += '<span class="dot' + (i < S.turns ? '' : ' e') + '"></span>';
+  if (freeTurns()) d = '<b title="Chủ hồ thả không giới hạn (bản thử)">∞</b>';
   $('dots').innerHTML = d;
   var busy = me && (me.act === 'release' || !!S.approach);
-  $('go').textContent = S.returning ? 'Cá đang tạ ơn…' : (S.turns > 0 ? 'Thả cá' : (S.phuoc >= 100 ? 'Đổi 100 phước lấy 1 lượt' : 'Hết lượt hôm nay'));
-  $('go').disabled = !!S.returning || !!busy || (S.turns <= 0 && S.phuoc < 100);
+  $('go').textContent = S.returning ? 'Cá đang tạ ơn…' : (S.turns > 0 || freeTurns() ? 'Thả cá' : (S.phuoc >= 100 ? 'Đổi 100 phước lấy 1 lượt' : 'Hết lượt hôm nay'));
+  $('go').disabled = !!S.returning || !!busy || (S.turns <= 0 && S.phuoc < 100 && !freeTurns());
   var hl = !!(S.ev && S.ev.seen && !S.ev.done);
   $('gChap').className = hl ? 'hl' : ''; $('gCui').className = hl ? 'hl' : '';
   $('gNiem').className = (hl || S.returning) ? 'hl' : '';
@@ -1488,13 +1500,14 @@ $('gNiem').addEventListener('click', function () {
 });
 $('go').addEventListener('click', function () {
   if (!me || S.returning || me.act === 'release') return;
-  if (S.turns <= 0) {
-    if (S.phuoc >= 100) { S.phuoc -= 100; store.set('phuoc', S.phuoc); S.turns = 1; saveTurns(); toast('Đã đổi 100 phước', 'Bạn có thêm 1 lượt thả cá.'); renderHUD(); }
+  if (S.turns <= 0 && !freeTurns()) {
+    if (S.phuoc >= 100) { if (!INFINITE_PHUOC) { S.phuoc -= 100; store.set('phuoc', S.phuoc); } S.turns = 1; saveTurns(); toast('Đã đổi 100 phước', 'Bạn có thêm 1 lượt thả cá.'); renderHUD(); }
     return;
   }
   if (S.approach) return;
   joyReset();
-  var back = Math.random() < 0.25, a = Math.atan2(me.pz, me.px), sx = Math.cos(a) * SHORE_R, sz = Math.sin(a) * SHORE_R;
+  var back = !!HOA_THAN || Math.random() < 0.25, a = Math.atan2(me.pz, me.px);   // ?hoathan: cá luôn quay lại tạ ơn để thử hóa thân
+  var sx = Math.cos(a) * SHORE_R, sz = Math.sin(a) * SHORE_R;
   if (Math.hypot(sx - me.px, sz - me.pz) > 2.6) {      // đang ở xa bờ: tự đi ra mép nước rồi mới thả
     S.approach = { x: sx, z: sz, back: back }; toast('Đang ra bờ hồ', 'Nhân vật tự đi tới mép nước để thả cá.'); renderHUD(); return;
   }
@@ -1505,7 +1518,8 @@ function doThrow(back) {
   send({ t: 'act', n: 'throw', back: back, fk: S.fishK });
   var st = S.stats[S.fishK] || { rel: 0, back: 0, tf: 0 }; st.rel++; if (back) st.back++; S.stats[S.fishK] = st; store.set('stats', S.stats);
   S.prog.rel++; saveProg();
-  S.turns--; saveTurns(); renderHUD();
+  if (!freeTurns()) { S.turns--; saveTurns(); }
+  renderHUD();
 }
 
 // tùy hỷ: chuỗi đốm sáng bay vòng cung từ người tùy hỷ sang người thả cá (một đám điểm, một lần vẽ)
@@ -1966,7 +1980,7 @@ function frame() {
         el.textContent = cam.x >= 0 ? c.name + ' đang thả cá ›' : '‹ ' + c.name + ' đang thả cá';
       }
     }
-    if (me.act === null && $('go').disabled && !S.returning && (S.turns > 0 || S.phuoc >= 100)) renderHUD();
+    if (me.act === null && $('go').disabled && !S.returning && (S.turns > 0 || S.phuoc >= 100 || freeTurns())) renderHUD();
   }
   if (S.inLake) Q.tick(dt);
   A3.debugTick(renderer);
@@ -2009,7 +2023,7 @@ function makePreview(cv) {
 }
 
 window.HAL = {
-  S: S, store: store, ROBES: ROBES, HAIRS: HAIRS, ACCS: ACCS, FISH: FISH, UNLOCK_ALL_FISH: UNLOCK_ALL_FISH,
+  S: S, store: store, ROBES: ROBES, HAIRS: HAIRS, ACCS: ACCS, FISH: FISH, UNLOCK_ALL_FISH: UNLOCK_ALL_FISH, INFINITE_PHUOC: INFINITE_PHUOC, UNLOCK_ALL_ITEMS: UNLOCK_ALL_ITEMS,
   fishOf: fishOf, needMet: needMet, today: today,
   addPhuoc: addPhuoc, saveTurns: saveTurns, saveLook: saveLook, saveProg: saveProg, renderHUD: renderHUD, toast: toast,
   applyLook: function () { saveLook(); if (S.inLake) { spawnMe(); send(helloMsg()); } renderRobes(); },
