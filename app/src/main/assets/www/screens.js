@@ -193,7 +193,7 @@ function pagePhuoc() {
   Array.prototype.forEach.call(scr.querySelectorAll('[data-go]'), function (b) {
     b.addEventListener('click', function () {
       var g2 = b.getAttribute('data-go');
-      if (g2 === 'lake') { show('ho'); H.toast('Đi dạo quanh hồ', 'Giữ mũi tên hai bên để đi. Thấy rác thì chạm để nhặt, thấy người thả cá thì tùy hỷ.'); }
+      if (g2 === 'lake') { show('ho'); H.toast('Đi dạo quanh hồ', 'Kéo cần điều khiển để đi khắp bờ hồ, kéo màn hình để xoay nhìn. Thấy rác thì chạm để nhặt, thấy người thả cá thì tùy hỷ.'); }
       if (g2 === 'incense') activity(actIncense);
       if (g2 === 'mo') activity(actMo);
       if (g2 === 'zen') activity(actZen);

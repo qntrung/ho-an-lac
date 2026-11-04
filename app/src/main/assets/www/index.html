@@ -33,6 +33,11 @@ body{font-family:var(--body);color:var(--ink);-webkit-user-select:none;user-sele
 .row{display:flex;gap:8px;align-items:center}
 .walk{flex:none;width:58px;height:58px;border-radius:29px;border:1.5px solid var(--line);background:#F3F8F7;color:var(--jade);display:grid;place-items:center;touch-action:none}
 .walk.on{background:var(--jade-soft);border-color:var(--jade)}
+.bottom{position:relative}
+.joy{position:absolute;left:6px;bottom:calc(100% + 14px);width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.3);border:2px solid rgba(255,255,255,.75);box-shadow:0 4px 16px rgba(31,64,63,.18);display:grid;place-items:center;touch-action:none;pointer-events:auto;-webkit-user-select:none;user-select:none}
+.joy i{width:50px;height:50px;border-radius:50%;background:var(--paper);border:1.5px solid var(--line);box-shadow:0 2px 8px rgba(31,64,63,.25);transition:transform .1s;pointer-events:none}
+.joy.on{background:rgba(255,255,255,.42)}
+.joy.on i{transition:none;background:var(--jade-soft);border-color:var(--jade)}
 .go{flex:1;height:58px;border:0;border-radius:29px;background:var(--jade);color:#fff;font:800 19px var(--display);box-shadow:0 6px 14px rgba(31,92,90,.28)}
 .go:disabled{opacity:.6}
 .gest{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
@@ -113,17 +118,16 @@ input[type=text]:focus{outline:2px solid var(--jade);border-color:var(--jade)}
     <div class="chips"><span class="chip"><span class="live"></span><span id="count">1 người đang ở hồ</span></span><button class="chip btn2" id="fishChip" type="button"><i id="fishDot"></i><span id="fishName">Cá chép đỏ</span></button><span class="chip">Túi rác <b id="bag" style="margin-left:4px">0</b>/8</span><button class="leave" id="leave" type="button">Rời hồ</button></div>
   </div>
   <div class="bottom">
+    <div class="joy" id="joy" role="application" aria-label="Cần điều khiển: kéo để đi"><i id="joyK"></i></div>
     <div class="row">
-      <button class="walk" id="wl" type="button" aria-label="Đi dạo sang trái"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg></button>
       <button class="go" id="go" type="button">Thả cá</button>
-      <button class="walk" id="wr" type="button" aria-label="Đi dạo sang phải"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5 L16 12 L9 19"/></svg></button>
     </div>
     <div class="gest">
       <button type="button" id="gChap">Chắp tay</button>
       <button type="button" id="gCui">Cúi chào</button>
       <button type="button" id="gNiem">A Di Đà Phật</button>
     </div>
-    <div class="foot"><span>Giữ mũi tên để đi dạo · chạm rác trên bờ để nhặt</span></div>
+    <div class="foot"><span>Cần điều khiển để đi · chạm rác để nhặt · kéo để xoay</span></div>
   </div>
 </div>
 <div id="toast" role="status" aria-live="polite"><b id="tt"></b><span id="ts"></span></div>

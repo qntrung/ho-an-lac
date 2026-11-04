@@ -58,13 +58,17 @@ Who counts as host depends on the server:
 - Fish: each species has a shape entry in `FISH_SHAPE`. Fish materials are transparent with `renderOrder` after the water, so they are drawn on top of the water surface and only tinted by depth (`fishTint`); drawing them under the semi-transparent water made them look washed out.
 - Fish transformation (cá hóa thân): when the owner sends off a thanking fish, it sometimes turns into a lotus, a crane or a dragon flying up to the sky (higher chance on rằm / mùng 1, estimated from moon age) and `stats[fish].tf` goes up. It is shown only on the owner's device because no network message may change.
 
+- Movement: players walk freely on the land ring between the shore and the outer trees (`R_MIN`..`R_MAX`, position `px`/`pz`), steered with the on-screen joystick (`#joy`) or arrow keys / WASD, relative to the camera direction. Big rocks, stone lanterns and shrubs block the way (`COLLIDE`, `keepOnLand`). The island is not reachable. Pressing "Thả cá" far from the water first auto-walks the player to the shore (`S.approach`), then the release walks from the current spot to the water edge and back (`relFrom` → `relTo`).
+- Lake camera: third-person behind the character (`CAM.yaw`), easing back behind the character while walking. Drag the screen to orbit 360° and tilt, mouse wheel or two-finger pinch to zoom, double-tap to snap back behind (`ORB.el`, `ORB.zoom`). A short tap still picks up trash. The mõ hall and zen scene keep their fixed cameras.
+- `st` carries optional `x`, `z`, `ry` (position and facing) besides the original `a`, `v`, `d`. Players on older builds ignore them and see free-walking friends on the path at angle `a`; friends on older builds (no `x`) are still drawn on the path.
+
 ### Persistence
 
 Per-device state (merit points, trash bag, name, look, owned items, daily fish-release turns, progress) is kept in `localStorage` under the `hal_` prefix (see the `store` helper at the top of `game.js`). Nothing is stored on the server.
 
 ## Rules agreed with the owner
 
-- **Network/data compatibility:** never change the `look` format (`{robe, hair, hat, beads, hand}`) or any network message. Friends on an older build share the same lake.
+- **Network/data compatibility:** never change the `look` format (`{robe, hair, hat, beads, hand}`) or the meaning of existing message fields. Friends on an older build share the same lake. New optional fields are allowed only when older builds still behave sensibly without them (as `x`, `z`, `ry` in `st`), and must be listed in the README table.
 - **Customization coverage:** every option in `ROBES`, `HAIRS`, `ACCS` and all 9 `FISH` must keep working, including in `makePreview`, the mõ hall and the zen scene.
 - **Test-build flags stay:** `UNLOCK_ALL_FISH` and similar test shortcuts are intentional. Don't remove them; keep them easy to find.
 - **Performance target: mid-range Android at 60 fps.** pixelRatio ≤ 2, merge static geometry, total draw calls under ~80, one shadow-casting light with a 1024 shadow map, a low-quality flag for weak phones (no shadows, pixelRatio 1.5). No extra libraries beyond the bundled Three.js r128.

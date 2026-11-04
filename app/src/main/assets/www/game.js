@@ -124,7 +124,7 @@ function sph(r, w, h) { return new T.SphereGeometry(r, w || 18, h || 14); }
 
 var PAG_LAMPS = [], LANTERN_GLOWS = [];
 var R_IN = 12.8, R_OUT = 24, R_WALK = 26.6, WATER_Y = -0.07;
-var WORLD = {};
+var WORLD = {}, COLLIDE = [];          // COLLIDE: vật cản trên bờ (đá lớn, đèn đá, bụi cây) dạng hình tròn {x, z, r}
 // đổi cờ chất lượng lúc đang chạy: bật/tắt bóng và độ nét
 Q.onChange(function (low) {
   renderer.setPixelRatio(Q.pixelRatio()); renderer.shadowMap.enabled = !low; sun.castShadow = !low;
@@ -208,6 +208,7 @@ Q.onChange(function (low) {
   [[0.4, 29.4, 0.9], [1.25, 29.0, 0.7], [2.3, 29.8, 1.1], [3.0, 28.9, 0.6], [3.9, 29.6, 0.9], [4.8, 29.2, 0.75], [5.6, 29.9, 1.0], [6.05, 28.8, 0.55],
     [1.0, R_IN - 1.2, 0.8], [2.6, R_IN - 1.0, 0.6], [4.4, R_IN - 1.3, 0.9], [5.5, R_IN - 1.1, 0.55]].forEach(function (b, kk) {
     var y0 = b[1] < R_IN ? ISL_TOP : 0;
+    if (b[1] > R_OUT) COLLIDE.push({ x: Math.cos(b[0]) * b[1], z: Math.sin(b[0]) * b[1], r: b[2] * 1.25 });
     sp.add(rockGeo(100 + kk, 22, 14), mossy(stoneCols[kk % 4]), MX([Math.cos(b[0]) * b[1], y0 + b[2] * 0.25, Math.sin(b[0]) * b[1]], [0, kk, 0], [b[2] * 1.3, b[2] * 0.8, b[2]]));
   });
 
@@ -266,6 +267,7 @@ Q.onChange(function (low) {
   // bụi cây tròn có hoa ở ngoài lối đi
   [0.15, 0.95, 1.7, 2.6, 3.35, 4.1, 4.9, 5.7].forEach(function (ba, kk) {
     var x = Math.cos(ba) * 29.6, z = Math.sin(ba) * 29.6, sz = 0.7 + (kk % 3) * 0.15, base = greens[(kk + 1) % 4];
+    COLLIDE.push({ x: x, z: z, r: sz * 1.5 });
     for (var j = 0; j < 3; j++) leaves.add(new T.SphereGeometry(1, 12, 8), canopyCol(base), MX([x + (j - 1) * sz * 0.8 * Math.sin(ba), sz * 0.55, z - (j - 1) * sz * 0.8 * Math.cos(ba)], null, [sz, sz * 0.85, sz]));
     for (j = 0; j < 5; j++) leaves.add(new T.SphereGeometry(0.09, 6, 4), lin(kk % 2 ? '#F6B9CB' : '#FFF4E8'), MX([x + (rnd() - 0.5) * sz * 2, sz * (0.9 + rnd() * 0.4), z + (rnd() - 0.5) * sz * 2]));
   });
@@ -296,6 +298,7 @@ Q.onChange(function (low) {
   var stC = shadeY(stone, mixC(stone, lin('#8F877A'), 0.45), mixC(stone, lin('#FFFFFF'), 0.25)), glowT = glowTex('rgba(255,200,130,0.9)');
   [0.55, 1.6, 2.65, 3.7, 4.75, 5.8].forEach(function (la) {
     var x = Math.cos(la) * 28.7, z = Math.sin(la) * 28.7, S2 = 1.7;
+    COLLIDE.push({ x: x, z: z, r: 0.55 });
     ls.add(lathe([[0.32, 0], [0.33, 0.06], [0.28, 0.12], [0.12, 0.16], [0.1, 0.7], [0.14, 0.74], [0.27, 0.78], [0.28, 0.84], [0.001, 0.85]], 16), stC, MX([x, 0, z], null, S2));
     for (var p2 = 0; p2 < 4; p2++) { var pa = p2 / 4 * Math.PI * 2 + Math.PI / 4; ls.add(capsule(0.035, 0.26, 6, 2), stC, MX([x + Math.cos(pa) * 0.17 * S2, 1.0 * S2, z + Math.sin(pa) * 0.17 * S2], null, S2)); }
     ls.add(lathe([[0.001, 0], [0.42, 0.0], [0.43, 0.04], [0.36, 0.1], [0.2, 0.2], [0.1, 0.3], [0.06, 0.36], [0.001, 0.37]], 16), stC, MX([x, 1.15 * S2, z], null, S2));
@@ -706,7 +709,7 @@ function P_zen() { var p = P_cross(); prayArms(p); p.hd = 0.12; return p; }
 
 // Thả cá (gửi qua mạng tên 'throw'): đi ra mép nước, quỳ một gối, hạ hai tay xuống mặt nước, mở tay cho cá bơi đi, chắp tay
 var REL = { walkIn: 1.1, open: 4.3, end: 9.6 };
-var EDGE = R_WALK - (R_OUT + 0.36);
+var R_MIN = R_OUT + 0.5, R_MAX = 34.5, SHORE_R = R_OUT + 0.36;     // vùng đi được trên bờ; mép nước khi thả cá
 var ACT_LEN = { release: REL.end, pick: 1.25, pray: 2.6, bow: 2.6, niem: 2.6 };
 function relPose(t) {
   var p = P_hold();
@@ -755,12 +758,19 @@ function pose(c, time) {
 function applyPose(c, dt, time) { setPose(c, pose(c, time), dt, 12); blink(c, dt || 0); }
 function act(c, name) { c.act = name; c.actT = 0; }
 // vị trí trên lối đi; khi thả cá nhân vật bước ra sát mép nước (c.edge)
-function edgeOf(c) {
-  if (c.act !== 'release') return 0;
-  var t = c.actT;
-  return EDGE * (seg(t, 0, REL.walkIn) * (1 - seg(t, 8.4, REL.end - 0.1)));
+// Vị trí: người chơi đi tự do trên bờ (px, pz). Bạn dùng bản cũ (tin nhắn st không có x, z) vẫn đi trên lối vòng theo góc.
+// Lúc thả cá: bước từ chỗ đang đứng ra mép nước (relFrom -> relTo) rồi quay về chỗ cũ.
+function relW(t) { return seg(t, 0, REL.walkIn) * (1 - seg(t, 8.4, REL.end - 0.1)); }
+function placeChar(c) {
+  if (c.act === 'release' && c.relTo) { c.root.position.lerpVectors(c.relFrom, c.relTo, relW(c.actT)); return; }
+  if (c.free) c.root.position.set(c.px, 0, c.pz);
+  else c.root.position.set(Math.cos(c.angle) * R_WALK, 0, Math.sin(c.angle) * R_WALK);
 }
-function placeOnPath(c) { var r = R_WALK - edgeOf(c); c.root.position.set(Math.cos(c.angle) * r, 0, Math.sin(c.angle) * r); }
+// giữ trong vùng đi được: không xuống nước, không đi quá rừng cây, không xuyên đá lớn, đèn đá, bụi cây
+function keepOnLand(c) {
+  var r = Math.hypot(c.px, c.pz), k = A3.clamp(r, R_MIN, R_MAX) / (r || 1); c.px *= k; c.pz *= k;
+  COLLIDE.forEach(function (o) { var dx = c.px - o.x, dz = c.pz - o.z, d = Math.hypot(dx, dz), m = o.r + 0.35; if (d < m && d > 1e-4) { c.px = o.x + dx / d * m; c.pz = o.z + dz / d * m; } });
+}
 function faceTo(c, dx, dz, dt) {
   var want = Math.atan2(dx, dz), cur = c.root.rotation.y;
   var d = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
@@ -860,6 +870,8 @@ function makeFish(fk) {
 function fishTint(o) { var k = A3.clamp((WATER_Y - o.position.y) / 0.35, 0, 1); o.material.color.copy(WHITE).lerp(FISH_TINT, 0.38 * k); }
 function handPos(c) { var v = new T.Vector3(), w = new T.Vector3(); c.AL.hand.getWorldPosition(v); c.AR.hand.getWorldPosition(w); return v.add(w).multiplyScalar(0.5); }
 function startThrow(c, isMe, back, fk) {
+  var p0 = c.root.position.clone(), a0 = Math.atan2(p0.z, p0.x);
+  c.angle = a0; c.relFrom = p0; c.relTo = new T.Vector3(Math.cos(a0) * SHORE_R, 0, Math.sin(a0) * SHORE_R);
   act(c, 'release');
   var f = makeFish(fk || 'chepdo');
   scene.add(f);
@@ -1229,8 +1241,11 @@ var myBub = document.createElement('div'); myBub.className = 'bub'; myBub.hidden
 var relBub = document.createElement('div'); relBub.className = 'bub'; relBub.hidden = true; labelsEl.appendChild(relBub);
 function spawnMe() {
   if (me) disposeTree(me.root);
-  var keepA = me ? me.angle : Math.random() * Math.PI * 2, keepR = me ? me.root.rotation.y : null;
-  me = chibi(S.look); me.angle = keepA; placeOnPath(me); me.root.rotation.y = keepR !== null ? keepR : Math.atan2(-Math.cos(me.angle), -Math.sin(me.angle));
+  var keepA = me ? me.angle : Math.random() * Math.PI * 2, keepR = me ? me.root.rotation.y : null, keepP = me ? [me.px, me.pz] : null;
+  me = chibi(S.look); me.free = true; me.angle = keepA; me.mvx = 0; me.mvz = 0;
+  if (keepP) { me.px = keepP[0]; me.pz = keepP[1]; } else { me.px = Math.cos(keepA) * R_WALK; me.pz = Math.sin(keepA) * R_WALK; }
+  placeChar(me); me.root.rotation.y = keepR !== null ? keepR : Math.atan2(-Math.cos(me.angle), -Math.sin(me.angle));
+  if (keepR === null) CAM.yaw = me.root.rotation.y;          // vào hồ: máy quay sau lưng, nhìn ra mặt hồ
   scene.add(me.root);
   $('meName').textContent = S.name; $('meAv').textContent = (S.name.trim()[0] || 'T').toUpperCase(); $('meAv').style.background = robeOf(S.robe).robe;
 }
@@ -1240,7 +1255,7 @@ function getRemote(id, info) {
     var lk = (info && info.look) || { robe: info && info.robe };
     r = chibi(lk); r.id = id; r.name = (info && info.name) || 'Bạn đồng tu';
     r.angle = info && typeof info.a === 'number' ? info.a : 0; r.netA = r.angle; r.netV = 0;
-    placeOnPath(r); scene.add(r.root);
+    placeChar(r); scene.add(r.root);
     r.tag = document.createElement('div'); r.tag.className = 'tag'; r.tag.textContent = r.name; labelsEl.appendChild(r.tag);
     r.bub = document.createElement('div'); r.bub.className = 'bub'; r.bub.hidden = true; labelsEl.appendChild(r.bub);
     remotes[id] = r; renderCount();
@@ -1309,6 +1324,8 @@ function handle(o) {
       r = remotes[o.from];
       if (!r) { r = getRemote(o.from, { a: o.a }); send({ t: 'who', to: o.from }); }
       r.netA = o.a; r.netV = o.v || 0; r.dirSign = o.d || 1;
+      // bản mới gửi thêm vị trí x, z và hướng mặt ry (trường tùy chọn, bản cũ bỏ qua)
+      if (typeof o.x === 'number' && typeof o.z === 'number') { if (!r.free) { r.px = o.x; r.pz = o.z; } r.free = true; r.netX = o.x; r.netZ = o.z; r.netR = typeof o.ry === 'number' ? o.ry : r.root.rotation.y; }
       break;
     case 'act':
       r = remotes[o.from]; if (!r) break;
@@ -1401,7 +1418,7 @@ if (!A) { $('inIp').value = 'localhost:8787'; $('scanning').hidden = true; }
 else { try { A.startDiscovery(); } catch (e) { /* bỏ qua */ } }
 
 function enterLake(title) {
-  S.inLake = true; S.ev = null; S.returning = null;
+  S.inLake = true; S.ev = null; S.returning = null; S.approach = null;
   spawnMe();
   $('lobby').hidden = true; $('hud').hidden = false;
   $('lakeName').textContent = S.hosting && S.hostIp ? title + ' · ' + S.hostIp : title;
@@ -1411,7 +1428,7 @@ function enterLake(title) {
   if (window.HAL && HAL.onEnter) HAL.onEnter();
 }
 function exitLake(msg) {
-  S.inLake = false; Net.leaving = true;
+  S.inLake = false; Net.leaving = true; S.approach = null;
   try { if (Net.ws) Net.ws.close(); } catch (e) { /* bỏ qua */ }
   Net.ws = null;
   if (S.hosting && A) { try { A.stopHost(); } catch (e) { /* bỏ qua */ } }
@@ -1435,7 +1452,7 @@ function renderHUD() {
   var fsp = fishOf(S.fishK); $('fishName').textContent = fsp.name; $('fishDot').style.background = fsp.body;
   var d = ''; for (var i = 0; i < 5; i++) d += '<span class="dot' + (i < S.turns ? '' : ' e') + '"></span>';
   $('dots').innerHTML = d;
-  var busy = me && me.act === 'release';
+  var busy = me && (me.act === 'release' || !!S.approach);
   $('go').textContent = S.returning ? 'Cá đang tạ ơn…' : (S.turns > 0 ? 'Thả cá' : (S.phuoc >= 100 ? 'Đổi 100 phước lấy 1 lượt' : 'Hết lượt hôm nay'));
   $('go').disabled = !!S.returning || !!busy || (S.turns <= 0 && S.phuoc < 100);
   var hl = !!(S.ev && S.ev.seen && !S.ev.done);
@@ -1475,14 +1492,21 @@ $('go').addEventListener('click', function () {
     if (S.phuoc >= 100) { S.phuoc -= 100; store.set('phuoc', S.phuoc); S.turns = 1; saveTurns(); toast('Đã đổi 100 phước', 'Bạn có thêm 1 lượt thả cá.'); renderHUD(); }
     return;
   }
-  walkDir = 0;
-  var back = Math.random() < 0.25;
+  if (S.approach) return;
+  joyReset();
+  var back = Math.random() < 0.25, a = Math.atan2(me.pz, me.px), sx = Math.cos(a) * SHORE_R, sz = Math.sin(a) * SHORE_R;
+  if (Math.hypot(sx - me.px, sz - me.pz) > 2.6) {      // đang ở xa bờ: tự đi ra mép nước rồi mới thả
+    S.approach = { x: sx, z: sz, back: back }; toast('Đang ra bờ hồ', 'Nhân vật tự đi tới mép nước để thả cá.'); renderHUD(); return;
+  }
+  doThrow(back);
+});
+function doThrow(back) {
   startThrow(me, true, back, S.fishK);
   send({ t: 'act', n: 'throw', back: back, fk: S.fishK });
   var st = S.stats[S.fishK] || { rel: 0, back: 0, tf: 0 }; st.rel++; if (back) st.back++; S.stats[S.fishK] = st; store.set('stats', S.stats);
   S.prog.rel++; saveProg();
   S.turns--; saveTurns(); renderHUD();
-});
+}
 
 // tùy hỷ: chuỗi đốm sáng bay vòng cung từ người tùy hỷ sang người thả cá (một đám điểm, một lần vẽ)
 var SPARK_N = 40, sparks = [], sparkGeo = new T.BufferGeometry();
@@ -1503,19 +1527,46 @@ function updateSparks(dt) {
 }
 
 /* ===================== Điều khiển ===================== */
-var walkDir = 0, keys = {};
-function holdBtn(el, d) {
-  var on = function (e) { e.preventDefault(); walkDir = d; el.classList.add('on'); if (el.setPointerCapture && e.pointerId != null) { try { el.setPointerCapture(e.pointerId); } catch (x) { /* bỏ qua */ } } };
-  var off = function () { if (walkDir === d) walkDir = 0; el.classList.remove('on'); };
-  el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointercancel', off); el.addEventListener('lostpointercapture', off);
+// cần điều khiển (joystick) và phím mũi tên / WASD: đẩy lên là đi về phía máy quay đang nhìn
+var joy = { x: 0, y: 0, id: null }, keys = {}, JOY_R = 42, joyEl = $('joy'), joyK = $('joyK');
+function joySet(e) {
+  var rc = joyEl.getBoundingClientRect(), dx = e.clientX - (rc.left + rc.width / 2), dy = e.clientY - (rc.top + rc.height / 2), d = Math.hypot(dx, dy), k = d > JOY_R ? JOY_R / d : 1;
+  joy.x = dx * k / JOY_R; joy.y = dy * k / JOY_R; joyK.style.transform = 'translate(' + (dx * k).toFixed(1) + 'px,' + (dy * k).toFixed(1) + 'px)';
 }
-holdBtn($('wl'), -1); holdBtn($('wr'), 1);
-addEventListener('keydown', function (e) { if (e.key === 'ArrowLeft') keys.l = 1; if (e.key === 'ArrowRight') keys.r = 1; });
-addEventListener('keyup', function (e) { if (e.key === 'ArrowLeft') keys.l = 0; if (e.key === 'ArrowRight') keys.r = 0; });
-addEventListener('blur', function () { walkDir = 0; keys = {}; });
+function joyReset() { joy.x = joy.y = 0; joy.id = null; joyK.style.transform = ''; joyEl.classList.remove('on'); }
+joyEl.addEventListener('pointerdown', function (e) { e.preventDefault(); joy.id = e.pointerId; try { joyEl.setPointerCapture(e.pointerId); } catch (x) { /* bỏ qua */ } joyEl.classList.add('on'); joySet(e); });
+joyEl.addEventListener('pointermove', function (e) { if (e.pointerId === joy.id) joySet(e); });
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (n) { joyEl.addEventListener(n, function (e) { if (e.pointerId === joy.id) joyReset(); }); });
+var KEYMAP = { ArrowLeft: 'l', ArrowRight: 'r', ArrowUp: 'u', ArrowDown: 'd', a: 'l', d: 'r', w: 'u', s: 'd', A: 'l', D: 'r', W: 'u', S: 'd' };
+addEventListener('keydown', function (e) { var k = KEYMAP[e.key]; if (k && !(e.target && e.target.tagName === 'INPUT')) keys[k] = 1; });
+addEventListener('keyup', function (e) { var k = KEYMAP[e.key]; if (k) keys[k] = 0; });
+addEventListener('blur', function () { joyReset(); keys = {}; });
 
 var ray = new T.Raycaster(), ndc = new T.Vector2(), downAt = null;
 canvas.addEventListener('pointerdown', function (e) { downAt = { x: e.clientX, y: e.clientY }; });
+/* ---- máy quay sau lưng nhân vật (góc nhìn của nhân vật): kéo màn hình để xoay 360° và nâng hạ góc nhìn,
+ * cuộn chuột / chụm hai ngón để phóng to thu nhỏ, chạm đúp để về sau lưng. Khi đi, máy quay tự xoay dần về sau lưng. ---- */
+var CAM = { yaw: 0, drag: false }, ORB = { el: 0, zoom: 1 }, orbPtrs = {}, pinch0 = 0, zoom0 = 1;
+var CAM_R0 = Math.hypot(7.6, 3.0), CAM_PH0 = Math.atan2(3.0, 7.6), CAM_A0 = 0.05;   // khoảng cách, góc cao, độ lệch nhìn (nhân vật đứng phía trên bảng điều khiển)
+function orbitOn() { return S.inLake && VIEW === 'lake' && !(window.HAL && HAL.covered); }
+function orbPts() { return Object.keys(orbPtrs).map(function (k) { return orbPtrs[k]; }); }
+canvas.addEventListener('pointerdown', function (e) {
+  orbPtrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var v = orbPts(); if (v.length === 2) { pinch0 = Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y); zoom0 = ORB.zoom; }
+});
+canvas.addEventListener('pointermove', function (e) {
+  var pr = orbPtrs[e.pointerId]; if (!pr) return;
+  var dx = e.clientX - pr.x, dy = e.clientY - pr.y; pr.x = e.clientX; pr.y = e.clientY;
+  if (!orbitOn()) return;
+  var v = orbPts();
+  if (v.length === 1) { CAM.yaw += dx * 0.006; ORB.el = A3.clamp(ORB.el + dy * 0.005, -0.32, 1.05); CAM.drag = true; }
+  else if (v.length === 2 && pinch0 > 0) { var d = Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y); ORB.zoom = A3.clamp(zoom0 * pinch0 / Math.max(1, d), 0.35, 2.2); }
+});
+function orbUp(e) { delete orbPtrs[e.pointerId]; pinch0 = 0; if (!orbPts().length) CAM.drag = false; }
+canvas.addEventListener('pointerup', orbUp); canvas.addEventListener('pointercancel', orbUp);
+canvas.addEventListener('wheel', function (e) { if (!orbitOn()) return; e.preventDefault(); ORB.zoom = A3.clamp(ORB.zoom * Math.exp(e.deltaY * 0.0012), 0.35, 2.2); }, { passive: false });
+canvas.addEventListener('dblclick', function () { ORB.el = 0; ORB.zoom = 1; if (me) CAM.yaw = me.root.rotation.y; });
+// chạm nhanh (không kéo) vào rác để nhặt
 canvas.addEventListener('pointerup', function (e) {
   if (!S.inLake || !downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 12) return;
   var rc = canvas.getBoundingClientRect(); ndc.set((e.clientX - rc.left) / rc.width * 2 - 1, -((e.clientY - rc.top) / rc.height) * 2 + 1);
@@ -1525,9 +1576,9 @@ canvas.addEventListener('pointerup', function (e) {
   if (!hit) return;
   var o = hit.object; while (o && o.userData.trash === undefined) o = o.parent;
   if (!o) return;
-  if (o.position.distanceTo(me.root.position) > 5.5) { toast('Đi lại gần hơn để nhặt', 'Giữ mũi tên để đi tới chỗ có rác.'); return; }
+  if (o.position.distanceTo(me.root.position) > 5.5) { toast('Đi lại gần hơn để nhặt', 'Dùng cần điều khiển để đi tới chỗ có rác.'); return; }
   if (me.act === 'pick') return;
-  walkDir = 0; act(me, 'pick'); send({ t: 'act', n: 'pick' });
+  joyReset(); act(me, 'pick'); send({ t: 'act', n: 'pick' });
   faceTo(me, o.position.x - me.root.position.x, o.position.z - me.root.position.z, 1);
   var i = o.userData.trash;
   setTimeout(function () { if (Net.isHost) hostPick(i, Net.id); else send({ t: 'pick', i: i, to: Net.hostId }); }, 500);
@@ -1799,7 +1850,7 @@ function resize() {
   camera.fov = w < h ? 58 : 46; camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
-var camPos = new T.Vector3(), camLook = new T.Vector3(), camInit = false, clock = new T.Clock(), time = 0, v3 = new T.Vector3();
+var camPiv = new T.Vector3(), camInit = false, clock = new T.Clock(), time = 0, v3 = new T.Vector3();
 function project(c, y) {
   v3.copy(c.root.position); v3.y = y; v3.project(camera);
   return { x: (v3.x + 1) / 2 * innerWidth, y: (1 - v3.y) / 2 * innerHeight, z: v3.z, nx: v3.x, ny: v3.y };
@@ -1813,35 +1864,63 @@ function frame() {
   updateWater(time);
   if (VIEW !== 'hall') updateAmbient(time);
   if (S.inLake && me) {
-    var dir = walkDir || (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
-    if (me.act === 'release' || me.act === 'pick') dir = 0;
-    me.speed += ((dir ? 2.6 : 0) - me.speed) * (1 - Math.exp(-dt * 8));
-    if (dir) me.dirSign = dir;
-    if (me.speed > 0.01) { me.angle -= me.dirSign * me.speed / R_WALK * dt; me.walkP += dt * me.speed * 3.3; }
-    placeOnPath(me);
-    if (me.speed > 0.15) faceWalk(me, dt); else if (me.act !== 'pick') faceWater(me, dt);
+    // đi tự do trên bờ theo cần điều khiển; hướng đi tính theo hướng máy quay
+    var jx = joy.x + (keys.r ? 1 : 0) - (keys.l ? 1 : 0), jy = joy.y + (keys.d ? 1 : 0) - (keys.u ? 1 : 0), jl = Math.min(1, Math.hypot(jx, jy));
+    if (me.act === 'release' || me.act === 'pick') { jl = 0; S.approach = null; }
+    var fx = Math.sin(CAM.yaw), fz = Math.cos(CAM.yaw);
+    if (S.approach) {           // tự đi ra mép nước trước khi thả cá
+      var ax = S.approach.x - me.px, az = S.approach.z - me.pz, ad = Math.hypot(ax, az);
+      if (ad < 2.4) { var ap = S.approach; S.approach = null; jl = 0; doThrow(ap.back); } else { me.mvx = ax / ad; me.mvz = az / ad; jl = 1; }
+    } else if (jl > 0.05) { var hl = Math.hypot(jx, jy); me.mvx = (-fx * jy - fz * jx) / hl; me.mvz = (-fz * jy + fx * jx) / hl; }
+    me.speed += (jl * 3.0 - me.speed) * (1 - Math.exp(-dt * 8));
+    if (me.speed > 0.01 && me.act !== 'release' && me.act !== 'pick') {
+      me.px += me.mvx * me.speed * dt; me.pz += me.mvz * me.speed * dt; keepOnLand(me);
+      me.walkP += dt * me.speed * 3.3;
+      if (jl > 0.05) {
+        faceTo(me, me.mvx, me.mvz, dt);
+        // máy quay xoay dần về sau lưng nhân vật (trừ khi đang kéo màn hình hoặc đang đi về phía máy quay)
+        var dyaw = Math.atan2(Math.sin(me.root.rotation.y - CAM.yaw), Math.cos(me.root.rotation.y - CAM.yaw));
+        if (!CAM.drag && (S.approach || Math.abs(dyaw) < 2.3)) CAM.yaw += dyaw * (1 - Math.exp(-dt * (S.approach ? 2.5 : 1.4) * me.speed / 3));
+      }
+      var ta = Math.atan2(me.pz, me.px); me.dirSign = me.mvx * -Math.sin(ta) + me.mvz * Math.cos(ta) < 0 ? 1 : -1;   // chiều đi cho bản cũ
+    }
+    if (me.act !== 'release') me.angle = Math.atan2(me.pz, me.px);
+    else faceWater(me, dt);
+    placeChar(me);
     stepChar(me, dt, 0);
-    // gửi vị trí 10 lần mỗi giây
+    // gửi vị trí 10 lần mỗi giây (a, v, d như cũ; x, z, ry thêm cho bản đi tự do)
     Net.lastSt += dt;
-    if (Net.lastSt > 0.1) { Net.lastSt = 0; send({ t: 'st', a: +me.angle.toFixed(4), v: +me.speed.toFixed(2), d: me.dirSign }); }
+    if (Net.lastSt > 0.1) { Net.lastSt = 0; send({ t: 'st', a: +me.angle.toFixed(4), v: +me.speed.toFixed(2), d: me.dirSign, x: +me.px.toFixed(2), z: +me.pz.toFixed(2), ry: +me.root.rotation.y.toFixed(3) }); }
 
     Object.keys(remotes).forEach(function (id, idx) {
       var r = remotes[id];
-      var diff = Math.atan2(Math.sin(r.netA - r.angle), Math.cos(r.netA - r.angle));
-      r.angle += diff * (1 - Math.exp(-dt * 10));
       r.speed += (r.netV - r.speed) * (1 - Math.exp(-dt * 8));
       if (r.speed > 0.01) r.walkP += dt * r.speed * 3.3;
-      placeOnPath(r);
-      if (r.speed > 0.15) faceWalk(r, dt); else if (r.act !== 'pick') faceWater(r, dt);
+      if (r.free) {
+        var kp = 1 - Math.exp(-dt * 10);
+        if (r.act !== 'release') { r.px += (r.netX - r.px) * kp; r.pz += (r.netZ - r.pz) * kp; r.angle = Math.atan2(r.pz, r.px); }
+        placeChar(r);
+        if (r.act === 'release') faceWater(r, dt);
+        else { var dr = r.netR - r.root.rotation.y; r.root.rotation.y += Math.atan2(Math.sin(dr), Math.cos(dr)) * kp; }
+      } else {
+        var diff = Math.atan2(Math.sin(r.netA - r.angle), Math.cos(r.netA - r.angle));
+        if (r.act !== 'release') r.angle += diff * (1 - Math.exp(-dt * 10));
+        placeChar(r);
+        if (r.speed > 0.15 && r.act !== 'release') faceWalk(r, dt); else if (r.act !== 'pick') faceWater(r, dt);
+      }
       stepChar(r, dt, idx + 1);
     });
     updateFish(dt); updateSparks(dt);
     if (S.ev) { S.ev.t += dt; if (S.ev.t > 6 || (S.ev.done && S.ev.t > S.ev.doneAt + 1.4)) { S.ev = null; renderHUD(); } }
     updateTrash(time);
 
-    var out = new T.Vector3(Math.cos(me.angle), 0, Math.sin(me.angle));
-    var wantPos = me.root.position.clone().addScaledVector(out, 7.2); wantPos.y = 4.4;
-    var wantLook = me.root.position.clone().addScaledVector(out, -6); wantLook.y = 1.5;
+    // máy quay sau lưng theo CAM.yaw, cao theo ORB.el, xa theo ORB.zoom; tâm bám nhân vật có độ trễ nhẹ
+    var piv = v3.copy(me.root.position).setY(1.5);
+    if (!camInit) { camPiv.copy(piv); camInit = true; }
+    camPiv.lerp(piv, 1 - Math.exp(-dt * 8));
+    var ph = A3.clamp(CAM_PH0 + ORB.el, 0.06, 1.45), cr = CAM_R0 * ORB.zoom, lp = ph - CAM_A0;
+    var wantPos = new T.Vector3(camPiv.x - fx * Math.cos(ph) * cr, camPiv.y + Math.sin(ph) * cr, camPiv.z - fz * Math.cos(ph) * cr);
+    var wantLook = wantPos.clone().add(new T.Vector3(fx * Math.cos(lp), -Math.sin(lp), fz * Math.cos(lp)).multiplyScalar(10));
     if (me.act === 'release') {
       // lúc thả cá: máy quay hạ thấp, đặt ngang bên cạnh nhân vật nhìn dọc bờ
       var rt = me.actT, rw = seg(rt, 0.3, 1.6) * (1 - seg(rt, 8.2, 9.4));
@@ -1851,9 +1930,7 @@ function frame() {
       var cl = spot.clone().addScaledVector(fw, 0.45); cl.y = 0.2;   // nhân vật nằm phía trên bảng điều khiển
       wantPos.lerp(cp, rw); wantLook.lerp(cl, rw);
     }
-    if (!camInit) { camPos.copy(wantPos); camLook.copy(wantLook); camInit = true; }
-    var kc = 1 - Math.exp(-dt * 4); camPos.lerp(wantPos, kc); camLook.lerp(wantLook, kc);
-    camera.position.copy(camPos); camera.lookAt(camLook);
+    camera.position.copy(wantPos); camera.lookAt(wantLook);
     sun.position.set(me.root.position.x - 40, 48, me.root.position.z + 30); sun.target.position.copy(me.root.position);
   } else {
     // sảnh: camera bay chậm quanh hồ làm nền
