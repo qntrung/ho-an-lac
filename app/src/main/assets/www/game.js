@@ -362,158 +362,189 @@ function updateWater(time) {
 }
 
 /* ===================== Nhân vật chibi có khớp ===================== */
-// Dựng theo bản duyệt 3D: bàn tay 5 ngón, tay áo loe, mặt bám mặt cầu của đầu, tóc có mái riêng,
-// cổ chân xoay được (ngồi xếp bằng), vạt áo phủ đùi khi ngồi.
-var skinM = M('#F5D2B0'), hairM = M('#3A2E2A', { roughness: 0.55 }), pantsM = M('#EFE9DC'), shoeM = M('#4A3F3A'), eyeM = M('#1E1410'), whiteM = M('#FFFFFF');
-var blushM = new T.MeshBasicMaterial({ color: 0xF4A6B8, transparent: true, opacity: 0.7 }), mouthM = M('#B5605A'), noseM = M('#EFC6A2');
-var hatM = M('#E9D7A6'), hatD = M('#D6C08A'), beadM = M('#6E3A1E', { roughness: 0.5 }), ribbonM = M('#C9567A');
-var fanM = new T.MeshStandardMaterial({ color: '#E36A3B', roughness: 0.7, side: T.DoubleSide }), fanM2 = new T.MeshStandardMaterial({ color: '#CF5530', roughness: 0.7, side: T.DoubleSide });
-var fanEdge = M('#F2C14E'), stickM = M('#8A5A2B');
-function hairPart(head, pS, pL, tS, tL, r) { var m = mesh(new T.SphereGeometry(r || 0.565, 28, 12, pS, pL, tS, tL), hairM); head.add(m); return m; }
-var FRONT = Math.PI * 0.5;            // trên SphereGeometry, phi = π/2 hướng ra +z (phía mặt)
-function buildHair(head, k, hat) {
-  var topEnd = k === 'cuhanh' ? 0.34 : 0.4;
-  hairPart(head, 0, Math.PI * 2, 0, Math.PI * topEnd, 0.56);
-  hairPart(head, FRONT + Math.PI * 0.45, Math.PI * 1.1, 0, Math.PI * 0.74, 0.565);   // nửa sau
+// Phong cách "Chibi mịn": đầu to (~45% chiều cao), mắt long lanh có điểm sáng, má hồng, miệng cười,
+// áo xếp nếp, tay áo loe, bàn tay bao gọn. Cả người là MỘT SkinnedMesh (thêm một mesh bóng cho tóc, mắt, chuỗi hạt):
+// mỗi khớp cũ (hips, spine, chestG, head, L/R, AL/AR, H) là một xương, mỗi mảnh gắn cứng vào một xương,
+// nên mọi tư thế dựng sẵn (base, P_*, legIK, sitCross, itemArms) vẫn dùng nguyên.
+var CH_MAT = shared(VC({ roughness: 0.72, envMapIntensity: 0.45, skinning: true }));
+var CH_GLOSS = shared(VC({ roughness: 0.38, envMapIntensity: 0.8, skinning: true }));
+var ITEM_MAT = shared(VC({ roughness: 0.62, side: T.DoubleSide }));
+var ITEM_GLOW = shared(VC({ roughness: 0.5, emissive: lin('#FF8A3A'), emissiveIntensity: 1.0 }));
+var eyeM = shared(M('#1E1410')), stickM = shared(M('#8A5A2B'));
+var CC = {
+  skin: lin('#F7D5B5'), skinD: lin('#E8B994'), hair: lin('#3A2E2A'), hairL: lin('#5E4A40'), pants: lin('#EFE9DC'), shoe: lin('#4A3F3A'),
+  collar: lin('#F6F1E8'), blush: lin('#F7AFAE'), mouth: lin('#B5605A'), eye: lin('#140D0A'), eyeB: lin('#5A3A2C'), white: lin('#FFFFFF'),
+  hat: lin('#E9D7A6'), hatD: lin('#CDB57E'), bead: lin('#7A4424'), ribbon: lin('#C9567A'), band: lin('#8FA7B5')
+};
+var HIDE = 1e-3;                       // xương co về gần 0 để ẩn mảnh (vạt áo, mí mắt) mà không tách mesh
+// Bộ dựng nhân vật có xương: ghi mảnh theo xương, cuối cùng nướng thành SkinnedMesh
+function Rig() { this.bones = []; this.list = []; }
+Rig.prototype.bone = function (parent, x, y, z) { var b = new T.Group(); b.position.set(x || 0, y || 0, z || 0); parent.add(b); this.bones.push(b); return b; };
+Rig.prototype.put = function (bone, geo, col, m, gloss) { this.list.push([bone, geo, col, m, gloss]); };
+Rig.prototype.build = function (root) {
+  root.updateMatrixWorld(true);
+  var bones = this.bones, P = [new Parts(), new Parts()];
+  this.list.forEach(function (it) {
+    var mm = it[0].matrixWorld.clone(); if (it[3]) mm.multiply(it[3]);
+    P[it[4] ? 1 : 0].add(it[1], it[2], mm, bones.indexOf(it[0]));
+  });
+  var sk = new T.Skeleton(bones), id = new T.Matrix4();
+  [CH_MAT, CH_GLOSS].forEach(function (mat, i) {
+    if (!P[i].g.length) return;
+    var m = new T.SkinnedMesh(P[i].geometry(), mat); m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    root.add(m); m.bind(sk, id);
+  });
+};
+var HR = 0.6;                          // bán kính đầu
+function onHead(yaw, pitch, r) { return new T.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(r || HR); }
+function faceMX(pos, spin, scl) { return A3.MXlook(pos, pos.clone().normalize(), scl, spin); }
+var FRONT = Math.PI * 0.5;             // trên SphereGeometry, phi = π/2 hướng ra +z (phía mặt)
+// phần tóc rủ xuống lưng gắn vào ngực (chest) để khi cúi đầu tóc vẫn buông theo lưng, không chĩa ngang
+function buildHair(rig, head, k, hat, chest) {
+  var hs = function (l, w, n) { return mixC(CC.hair, CC.hairL, sstep(0.3, 1, n.y) * 0.8); };
+  var put = function (g, m) { rig.put(head, g, hs, m, true); };
+  var capEnd = k === 'cuhanh' ? 0.34 : 0.4;
+  put(new T.SphereGeometry(HR * 1.055, 40, 14, 0, Math.PI * 2, 0, Math.PI * capEnd), MX([0, 0, -0.008], [0.08, 0, 0]));
+  put(new T.SphereGeometry(HR * 1.06, 36, 20, FRONT + 0.95, Math.PI * 2 - 1.9, 0, Math.PI * (k === 'ngan' ? 0.64 : 0.8)));
+  // mái tóc: các lọn tròn dọc chân tóc trước trán
+  for (var i = 0; i < 9; i++) {
+    var ty = (i - 4) / 4 * 0.95, tp = onHead(ty, 0.29 - Math.abs(i - 4) * 0.028 - (i % 2) * 0.03, HR);
+    put(new T.SphereGeometry(0.14, 12, 9), A3.MXlook(tp, tp.clone().normalize(), [0.62, 0.92, 0.38], -ty * 0.45));
+  }
   if (k === 'bui') {
-    hairPart(head, FRONT - 1.25, 1.55, Math.PI * 0.3, Math.PI * 0.21);
-    hairPart(head, FRONT + 0.3, 0.95, Math.PI * 0.3, Math.PI * 0.13);
-    if (!hat) { var b = mesh(sph(0.21), hairM); b.position.set(0, 0.42, -0.34); head.add(b); }
+    if (!hat) { put(new T.SphereGeometry(0.24, 20, 14), MX([0, 0.53, -0.31])); rig.put(head, new T.TorusGeometry(0.155, 0.03, 8, 22), CC.band, MX([0, 0.44, -0.26], [Math.PI / 2 + 0.6, 0, 0]), true); }
   } else if (k === 'ngan') {
-    hairPart(head, FRONT - 0.95, 1.9, Math.PI * 0.3, Math.PI * 0.15);
-    hairPart(head, FRONT - 1.9, 0.75, Math.PI * 0.3, Math.PI * 0.42, 0.58);
-    hairPart(head, FRONT + 1.15, 0.75, Math.PI * 0.3, Math.PI * 0.42, 0.58);
+    [-1, 1].forEach(function (sd) { put(new T.SphereGeometry(0.16, 12, 9), MX([0.55 * sd, -0.12, -0.05], null, [0.55, 1, 0.8])); });
+    if (!hat) put(new T.SphereGeometry(0.1, 10, 8), MX([0.05, HR * 1.04, 0.08], [0, 0, -0.5], [0.6, 1.2, 0.6]));
   } else if (k === 'dai') {
-    hairPart(head, FRONT - 1.35, 1.27, Math.PI * 0.3, Math.PI * 0.2);
-    hairPart(head, FRONT + 0.08, 1.27, Math.PI * 0.3, Math.PI * 0.2);
-    var lh = mesh(new T.BoxGeometry(0.95, 1.15, 0.16), hairM); lh.position.set(0, -0.55, -0.36); head.add(lh);
-    hairPart(head, FRONT - 1.75, 0.5, Math.PI * 0.35, Math.PI * 0.4, 0.575);
-    hairPart(head, FRONT + 1.25, 0.5, Math.PI * 0.35, Math.PI * 0.4, 0.575);
+    rig.put(chest, A3.capsule(0.3, 0.75, 22, 6), hs, MX([0, 0.6, -0.38], [0.08, 0, 0], [1.55, 1, 0.5]), true);
+    [-1, 1].forEach(function (sd) { put(A3.capsule(0.09, 0.45, 12, 4), MX([0.53 * sd, -0.4, 0.1], [0, 0, 0.08 * sd])); });
   } else if (k === 'bim') {
-    hairPart(head, FRONT - 1.2, 1.15, Math.PI * 0.3, Math.PI * 0.16);
-    hairPart(head, FRONT + 0.05, 1.15, Math.PI * 0.3, Math.PI * 0.16);
     [-1, 1].forEach(function (sd) {
-      for (var i = 0; i < 4; i++) { var bb = mesh(sph(0.12 - i * 0.012, 10, 8), hairM); bb.position.set(0.44 * sd, -0.36 - i * 0.17, -0.14); head.add(bb); }
-      var bow = mesh(new T.TorusGeometry(0.06, 0.025, 6, 12), ribbonM); bow.position.set(0.44 * sd, -1.0, -0.14); head.add(bow);
+      for (var j = 0; j < 5; j++) { var by = -0.32 - j * 0.15; rig.put(j < 2 ? head : chest, new T.SphereGeometry(0.12 - j * 0.01, 12, 9), hs, MX([0.47 * sd, j < 2 ? by : by + 1.22, -0.24], null, [1, 1.15, 1]), true); }
+      [-1, 1].forEach(function (s2) { rig.put(chest, new T.SphereGeometry(0.06, 10, 7), CC.ribbon, MX([0.47 * sd + 0.06 * s2, 0.16, -0.22], [0, 0, 0.6 * s2], [1.3, 0.7, 0.6]), true); });
     });
   } else if (k === 'cuhanh') {
     if (!hat) {
-      var t1 = mesh(sph(0.23), hairM); t1.position.set(0, 0.62, -0.06); head.add(t1);
-      var t2 = mesh(sph(0.11), hairM); t2.position.set(0, 0.85, -0.06); head.add(t2);
-      var band = mesh(new T.TorusGeometry(0.16, 0.035, 8, 20), ribbonM); band.rotation.x = Math.PI / 2; band.position.set(0, 0.48, -0.06); head.add(band);
+      put(A3.lathe([[0.001, 0], [0.2, 0.04], [0.27, 0.15], [0.23, 0.28], [0.11, 0.4], [0.03, 0.5], [0.001, 0.56]], 22), MX([0, HR * 0.9, -0.04]));
+      rig.put(head, new T.TorusGeometry(0.2, 0.035, 8, 24), CC.ribbon, MX([0, HR * 0.95, -0.04], [Math.PI / 2, 0, 0]), true);
     }
   }
 }
-// Bàn tay 5 ngón. Hệ toạ độ cổ tay: ngón chỉ theo -y, mu bàn tay hướng ra ngoài (+x với tay trái), ngón cái phía trước (+z).
-function buildHand(wrist, sd) {
-  var g = new T.Group(); wrist.add(g);
-  var palm = mesh(sph(0.07, 14, 12), skinM); palm.scale.set(0.5, 0.95, 0.9); palm.position.y = -0.055; g.add(palm);
-  var fingers = [], Z = [0.042, 0.014, -0.014, -0.04], LEN = [0.07, 0.078, 0.074, 0.06];
-  for (var i = 0; i < 4; i++) {
-    var f = new T.Group(); f.position.set(0, -0.112, Z[i]); g.add(f);
-    var l1 = LEN[i] * 0.55, l2 = LEN[i] * 0.45;
-    var a = mesh(cyl(0.0165, 0.0155, l1, 8), skinM, false); a.position.y = -l1 / 2; f.add(a);
-    f.add(mesh(sph(0.0165, 8, 6), skinM, false));
-    var j2 = new T.Group(); j2.position.y = -l1; f.add(j2);
-    j2.add(mesh(sph(0.0155, 8, 6), skinM, false));
-    var b = mesh(cyl(0.0155, 0.0135, l2, 8), skinM, false); b.position.y = -l2 / 2; j2.add(b);
-    var tip = mesh(sph(0.0135, 8, 6), skinM, false); tip.position.y = -l2; j2.add(tip);
-    fingers.push({ f: f, j2: j2 });
-  }
-  var th = new T.Group(); th.position.set(-0.012 * sd, -0.035, 0.05); th.rotation.set(0.55, 0, -0.35 * sd); g.add(th);
-  var t1 = mesh(cyl(0.019, 0.018, 0.045, 8), skinM, false); t1.position.y = -0.022; th.add(t1);
-  th.add(mesh(sph(0.019, 8, 6), skinM, false));
-  var tj = new T.Group(); tj.position.y = -0.045; th.add(tj);
-  tj.add(mesh(sph(0.018, 8, 6), skinM, false));
-  var t2 = mesh(cyl(0.018, 0.015, 0.04, 8), skinM, false); t2.position.y = -0.02; tj.add(t2);
-  var tt = mesh(sph(0.015, 8, 6), skinM, false); tt.position.y = -0.04; tj.add(tt);
-  return { g: g, fingers: fingers, th: th, tj: tj, sd: sd };
+// Bàn tay bao gọn kiểu chibi: lòng tay + khối bốn ngón (2 đốt) + ngón cái (2 đốt).
+// Hệ toạ độ cổ tay: ngón chỉ theo -y, mu bàn tay hướng ra ngoài (+x với tay trái), ngón cái phía trước (+z).
+function buildHand(rig, wrist, sd) {
+  var g = rig.bone(wrist), sk = A3.shadeY(CC.skin, CC.skinD, mixC(CC.skin, CC.white, 0.15));
+  rig.put(g, new T.SphereGeometry(0.075, 14, 10), sk, MX([0, -0.062, 0], null, [0.55, 0.92, 0.95]));
+  var f = rig.bone(g, 0, -0.112, 0);
+  rig.put(f, A3.capsule(0.031, 0.032, 12, 4), sk, MX([0, -0.024, -0.002], null, [1, 1, 1.75]));
+  var j2 = rig.bone(f, 0, -0.05, 0);
+  rig.put(j2, A3.capsule(0.029, 0.018, 12, 4), sk, MX([0, -0.018, -0.002], null, [1, 1, 1.7]));
+  var th = rig.bone(g, -0.012 * sd, -0.035, 0.05); th.rotation.set(0.55, 0, -0.35 * sd);
+  rig.put(th, A3.capsule(0.021, 0.03, 10, 3), sk, MX([0, -0.022, 0]));
+  var tj = rig.bone(th, 0, -0.045, 0);
+  rig.put(tj, A3.capsule(0.019, 0.016, 10, 3), sk, MX([0, -0.018, 0]));
+  return { g: g, fingers: [{ f: f, j2: j2 }], th: th, tj: tj, sd: sd };
 }
 // curl: 0 duỗi thẳng, 1 nắm chặt
 function setHand(H, curl, wx, wy, wz) {
   var s = -H.sd;
-  H.fingers.forEach(function (f, i) { f.f.rotation.z = s * curl * (1.35 + i * 0.05); f.j2.rotation.z = s * curl * 1.45; f.f.rotation.x = (1.5 - i) * 0.04 * curl; });
+  H.fingers.forEach(function (f) { f.f.rotation.z = s * curl * 1.4; f.j2.rotation.z = s * curl * 1.45; });
   H.th.rotation.z = -0.35 * H.sd + s * curl * 0.5; H.tj.rotation.z = s * curl * 0.9;
   H.g.rotation.set(wx || 0, wy || 0, wz || 0);
 }
 function chibi(look) {
   look = look || {};
-  var rb = robeOf(look.robe);
-  var robe = M(rb.robe), robeD = M(rb.robeD);
+  var rb = robeOf(look.robe), rig = new Rig(), sY = A3.shadeY;
+  var robe = lin(rb.robe), robeD = lin(rb.robeD), robeL = mixC(robe, CC.white, 0.18);
+  var robeShade = function (l, w, n) { var k = n.y * 0.5 + 0.5; return k < 0.5 ? mixC(robeD, robe, k * 2) : mixC(robe, robeL, (k - 0.5) * 1.2); };
+  var skinS = sY(CC.skin, CC.skinD, mixC(CC.skin, CC.white, 0.12)), pantsS = sY(CC.pants, mixC(CC.pants, lin('#8E8577'), 0.3), CC.pants);
+  var shoeS = sY(CC.shoe, mixC(CC.shoe, lin('#000000'), 0.3), mixC(CC.shoe, CC.white, 0.25));
   var root = new T.Group();
-  var hips = new T.Group(); hips.position.y = 0.95; root.add(hips);
+  var hips = rig.bone(root, 0, 0.95, 0);
   function leg(sd) {
-    var hip = new T.Group(); hip.position.set(0.16 * sd, 0, 0); hips.add(hip);
-    var th = mesh(cyl(0.125, 0.11, 0.5), pantsM); th.position.y = -0.25; hip.add(th);
-    hip.add(mesh(sph(0.13, 12, 10), pantsM));
-    var knee = new T.Group(); knee.position.y = -0.5; hip.add(knee);
-    knee.add(mesh(sph(0.11, 12, 10), pantsM));
-    var sh = mesh(cyl(0.11, 0.1, 0.4), pantsM); sh.position.y = -0.2; knee.add(sh);
-    var ank = new T.Group(); ank.position.y = -0.4; knee.add(ank);
-    var ft = mesh(new T.BoxGeometry(0.19, 0.1, 0.3), shoeM); ft.position.set(0, -0.03, 0.07); ank.add(ft);
+    var hip = rig.bone(hips, 0.16 * sd, 0, 0);
+    rig.put(hip, A3.limb(0.13, 0.115, 0.5, 14), pantsS);
+    var knee = rig.bone(hip, 0, -0.5, 0);
+    rig.put(knee, A3.limb(0.115, 0.1, 0.4, 14), pantsS);
+    var ank = rig.bone(knee, 0, -0.4, 0);
+    rig.put(ank, new T.SphereGeometry(1, 16, 10), shoeS, MX([0, -0.035, 0.06], null, [0.115, 0.075, 0.175]));
+    var ft = new T.Group(); ft.position.set(0, -0.03, 0.07); ank.add(ft);       // hướng bàn chân (dùng khi ngồi xếp bằng)
     return { hip: hip, knee: knee, ank: ank, ft: ft };
   }
   var L = leg(1), R = leg(-1);
-  var skM = M(rb.robe); skM.side = T.DoubleSide;
-  var skirt = mesh(new T.CylinderGeometry(0.3, 0.46, 0.55, 22, 1, true), skM); skirt.position.y = -0.2; hips.add(skirt);
-  var lap = mesh(new T.SphereGeometry(0.5, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2), skM); lap.scale.set(1.12, 0.32, 0.86); lap.position.set(0, -0.1, 0.14); lap.visible = false; hips.add(lap);
-  var spine = new T.Group(); hips.add(spine);
-  var waist = mesh(sph(0.32, 18, 12), robe); waist.scale.y = 0.62; spine.add(waist);
-  var chestG = new T.Group(); spine.add(chestG);
-  var chest = mesh(cyl(0.29, 0.33, 0.62, 18), robe); chest.position.y = 0.3; chestG.add(chest);
-  var flap = mesh(new T.BoxGeometry(0.05, 0.6, 0.02), robeD); flap.position.set(0.08, 0.3, 0.31); flap.rotation.z = 0.15; chestG.add(flap);
-  var neck = mesh(cyl(0.09, 0.1, 0.14), skinM); neck.position.y = 0.66; chestG.add(neck);
-  var head = new T.Group(); head.position.y = 1.18; chestG.add(head);
-  head.add(mesh(sph(0.52, 26, 20), skinM));
-  var hair = look.hair || 'bui';
-  buildHair(head, hair, look.hat);
-  var HR = 0.52;
-  function onFace(m, x, y, lift, spin) {
-    var z = Math.sqrt(Math.max(0.001, HR * HR - x * x - y * y));
-    var n = new T.Vector3(x, y, z).normalize();
-    m.position.copy(n).multiplyScalar(HR + (lift || 0));
-    m.quaternion.setFromUnitVectors(new T.Vector3(0, 0, 1), n);
-    if (spin) m.rotateZ(spin);
-    head.add(m); return m;
+  // vạt áo dưới xếp nếp, có mép gấp vào trong
+  var skirt = rig.bone(hips);
+  rig.put(skirt, A3.folds(A3.lathe([[0.43, -0.5], [0.47, -0.6], [0.51, -0.61], [0.5, -0.58], [0.44, -0.4], [0.37, -0.2], [0.32, -0.05], [0.3, 0.06]], 40), 12, function (y) { return 0.05 * sstep(-0.05, -0.58, y); }), robeShade);
+  rig.put(skirt, new T.TorusGeometry(0.505, 0.02, 6, 48), robeD, MX([0, -0.6, 0], [Math.PI / 2, 0, 0]));
+  // vạt áo phủ đùi khi ngồi xếp bằng
+  var lap = rig.bone(hips);
+  rig.put(lap, A3.folds(new T.SphereGeometry(0.62, 32, 10, 0, Math.PI * 2, 0, Math.PI / 2), 14, function () { return 0.03; }), robeShade, MX([0, -0.12, 0.16], null, [1.1, 0.36, 0.95]));
+  var spine = rig.bone(hips);
+  var chestG = rig.bone(spine);
+  rig.put(chestG, A3.folds(A3.lathe([[0.3, -0.08], [0.33, 0.05], [0.335, 0.2], [0.32, 0.38], [0.28, 0.5], [0.2, 0.6], [0.11, 0.66], [0.09, 0.68]], 30), 6, function (y) { return 0.02 * (1 - sstep(0.15, 0.5, y)); }), robeShade);
+  // cổ áo trắng bên trong + vạt chéo (giao lĩnh) + đai lưng
+  rig.put(chestG, new T.TorusGeometry(0.12, 0.03, 8, 26), CC.collar, MX([0, 0.645, 0.015], [Math.PI / 2 - 0.25, 0, 0]));
+  var lapel = new T.CatmullRomCurve3([[-0.07, 0.668, 0.104], [0.028, 0.583, 0.235], [0.138, 0.413, 0.315], [0.248, 0.226, 0.285], [0.324, 0.056, 0.142]].map(function (a) { return new T.Vector3(a[0], a[1], a[2]); }));
+  rig.put(chestG, new T.TubeGeometry(lapel, 20, 0.022, 6, false), robeD);
+  rig.put(chestG, new T.TorusGeometry(0.333, 0.032, 8, 36), robeD, MX([0, 0.0, 0], [Math.PI / 2, 0, 0]));
+  rig.put(chestG, A3.capsule(0.085, 0.08, 12, 4), skinS, MX([0, 0.7, 0]));
+  if (look.beads) {
+    for (var bi = 0; bi < 22; bi++) {
+      var ba = bi / 22 * Math.PI * 2, front = (Math.cos(ba) + 1) / 2;
+      rig.put(chestG, new T.SphereGeometry(0.03, 8, 6), sY(CC.bead, mixC(CC.bead, lin('#2A160C'), 0.5), mixC(CC.bead, CC.white, 0.35)),
+        MX([Math.sin(ba) * (0.18 + 0.14 * front), 0.62 - 0.3 * Math.pow(front, 1.6), Math.cos(ba) * 0.17 + 0.155 * front + 0.04 + 0.03 * front]), true);
+    }
+    rig.put(chestG, new T.SphereGeometry(0.04, 10, 8), CC.ribbon, MX([0, 0.29, 0.4]), true);
+    rig.put(chestG, A3.lathe([[0.001, -0.118], [0.045, -0.11], [0.028, -0.014], [0.001, 0]], 10), CC.ribbon, MX([0, 0.27, 0.4]), true);
   }
+  var head = rig.bone(chestG, 0, 1.22, 0);
+  rig.put(head, new T.SphereGeometry(HR, 40, 28), function (l, w, n) { return mixC(CC.skinD, CC.skin, 0.55 + 0.45 * sstep(-0.9, 0.3, l.y / HR)); });
+  [-1, 1].forEach(function (sd) {
+    rig.put(head, new T.SphereGeometry(0.1, 10, 8), skinS, MX([HR * 0.92 * sd, -0.06, -0.02], null, [0.55, 1, 0.8]));
+    rig.put(head, A3.skinPatch(0.17, 0.62, HR * 1.003), CC.blush, new T.Matrix4().makeRotationFromQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), onHead(0.6 * sd, -0.3, 1))));
+    rig.put(head, A3.capsule(0.016, 0.085, 8, 3), CC.hair, faceMX(onHead(0.33 * sd, 0.12, HR * 0.985), Math.PI / 2 + 0.18 * sd));
+  });
+  rig.put(head, new T.SphereGeometry(0.026, 8, 6), mixC(CC.skin, CC.skinD, 0.7), faceMX(onHead(0, -0.2, HR * 0.99)));
+  rig.put(head, new T.TorusGeometry(0.05, 0.015, 8, 18, Math.PI), CC.mouth, faceMX(onHead(0, -0.36, HR * 0.988), Math.PI));
+  // mắt và mí là xương riêng: chớp mắt / nhắm mắt bằng cách co xương theo chiều dọc
   var eyes = [], lids = [];
   [-1, 1].forEach(function (sd) {
-    var ear = mesh(sph(0.1, 10, 8), skinM); ear.position.set(0.5 * sd, -0.04, 0); head.add(ear);
-    var eye = mesh(sph(0.075, 12, 10), eyeM, false); eye.scale.set(0.9, 1.25, 0.4); onFace(eye, 0.18 * sd, -0.06, -0.012);
-    var gl = mesh(sph(0.024, 8, 6), whiteM, false); onFace(gl, 0.18 * sd + 0.022, -0.025, 0.014);
-    var lid = mesh(new T.TorusGeometry(0.07, 0.014, 6, 12, Math.PI), eyeM, false); onFace(lid, 0.18 * sd, -0.08, 0.004, Math.PI); lid.visible = false;
-    eyes.push(eye, gl); lids.push(lid);
-    var brow = mesh(new T.BoxGeometry(0.13, 0.026, 0.014), hairM, false); onFace(brow, 0.18 * sd, 0.08, 0.002, -0.15 * sd);
-    var bl = new T.Mesh(new T.CircleGeometry(0.072, 16), blushM); onFace(bl, 0.29 * sd, -0.17, 0.003);
+    var pos = onHead(0.31 * sd, -0.13, HR * 0.955), q = new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 0, 1), pos.clone().normalize());
+    var eb = rig.bone(head, pos.x, pos.y, pos.z); eb.quaternion.copy(q);
+    rig.put(eb, new T.SphereGeometry(0.097, 18, 14), function (l) { return mixC(CC.eyeB, CC.eye, sstep(-0.085, 0.07, l.y)); }, MX(null, null, [0.8, 1.12, 0.4]), true);
+    rig.put(eb, new T.SphereGeometry(0.03, 10, 7), CC.white, MX([0.026 * sd, 0.043, 0.037], null, [1, 1, 0.5]), true);
+    rig.put(eb, new T.SphereGeometry(0.014, 8, 6), CC.white, MX([-0.028 * sd, -0.043, 0.037], null, [1, 1, 0.5]), true);
+    var lp = onHead(0.31 * sd, -0.15, HR * 0.995), lb = rig.bone(head, lp.x, lp.y, lp.z);
+    lb.quaternion.setFromUnitVectors(new T.Vector3(0, 0, 1), lp.clone().normalize());
+    rig.put(lb, new T.TorusGeometry(0.068, 0.014, 6, 14, Math.PI), CC.eye, MX(null, [0, 0, Math.PI]), true);
+    eyes.push(eb); lids.push(lb);
   });
-  onFace(mesh(sph(0.042, 10, 8), noseM, false), 0, -0.13, -0.012);
-  onFace(mesh(new T.TorusGeometry(0.055, 0.015, 6, 14, Math.PI), mouthM, false), 0, -0.24, 0.0, Math.PI);
+  var hair = look.hair || 'bui';
+  buildHair(rig, head, hair, look.hat, chestG);
   if (look.hat) {
-    var hat = mesh(new T.ConeGeometry(1.0, 0.55, 28, 1, true), hatM); hat.material.side = T.DoubleSide; hat.position.y = 0.62; head.add(hat);
-    var rim = mesh(new T.TorusGeometry(0.99, 0.02, 6, 32), hatD); rim.rotation.x = Math.PI / 2; rim.position.y = 0.35; head.add(rim);
-  }
-  if (look.beads) {
-    var ring = new T.Group(); ring.position.set(0, 0.57, 0.04); ring.rotation.x = 0.35; chestG.add(ring);
-    for (var bi = 0; bi < 16; bi++) { var ba = bi / 16 * Math.PI * 2; var bd = mesh(sph(0.04, 8, 6), beadM, false); bd.position.set(Math.cos(ba) * 0.27, 0, Math.sin(ba) * 0.25); ring.add(bd); }
-    var tas = mesh(new T.ConeGeometry(0.035, 0.12, 6), ribbonM, false); tas.position.set(0, -0.08, 0.27); tas.rotation.x = Math.PI; ring.add(tas);
+    // nón lá: vỏ nón có độ dày, vân lá chạy vòng
+    rig.put(head, A3.lathe([[0.001, 0.55], [0.28, 0.42], [0.68, 0.2], [1.08, -0.01], [1.13, -0.02], [1.12, 0.0], [0.7, 0.24], [0.3, 0.48], [0.001, 0.62]], 36),
+      function (l, w, n) { var r = Math.hypot(l.x, l.z); return mixC(mixC(CC.hat, CC.hatD, 0.5 + 0.5 * Math.sin(r * 38)), CC.white, n.y > 0 ? 0.08 : 0); }, MX([0, HR * 0.62, 0]));
   }
   function arm(sd) {
-    var sh = new T.Group(); sh.position.set(0.36 * sd, 0.55, 0); chestG.add(sh);
-    sh.add(mesh(sph(0.15, 12, 10), sd > 0 ? robe : robeD));
-    var up = mesh(cyl(0.12, 0.15, 0.44), sd > 0 ? robe : robeD); up.position.y = -0.21; sh.add(up);
-    var el = new T.Group(); el.position.y = -0.43; sh.add(el);
-    el.add(mesh(sph(0.15, 12, 10), sd > 0 ? robe : robeD));
-    var fa = mesh(cyl(0.13, 0.17, 0.3), sd > 0 ? robe : robeD); fa.position.y = -0.15; el.add(fa);
-    var cuffM = (sd > 0 ? robe : robeD).clone(); cuffM.side = T.DoubleSide;
-    var cuff = mesh(new T.CylinderGeometry(0.17, 0.215, 0.12, 18, 1, true), cuffM); cuff.position.y = -0.34; el.add(cuff);
-    var wristJ = mesh(cyl(0.05, 0.055, 0.08, 10), skinM); wristJ.position.y = -0.36; el.add(wristJ);
-    var hand = new T.Group(); hand.position.y = -0.4; el.add(hand);
-    return { sh: sh, el: el, hand: hand, H: buildHand(hand, sd) };
+    var sh = rig.bone(chestG, 0.36 * sd, 0.55, 0);
+    rig.put(sh, new T.SphereGeometry(0.155, 16, 12), robeShade);
+    rig.put(sh, A3.limb(0.14, 0.13, 0.43, 16), robeShade);
+    var el = rig.bone(sh, 0, -0.43, 0);
+    rig.put(el, new T.SphereGeometry(0.135, 14, 10), robeShade);
+    rig.put(el, A3.lathe([[0.17, -0.3], [0.2, -0.355], [0.232, -0.36], [0.225, -0.33], [0.19, -0.22], [0.15, -0.08], [0.13, 0.02]], 22), robeShade);
+    rig.put(el, new T.TorusGeometry(0.226, 0.016, 6, 26), robeD, MX([0, -0.355, 0], [Math.PI / 2, 0, 0]));
+    rig.put(el, A3.capsule(0.055, 0.08, 10, 3), skinS, MX([0, -0.36, 0]));
+    var hand = rig.bone(el, 0, -0.4, 0);
+    return { sh: sh, el: el, hand: hand, H: buildHand(rig, hand, sd) };
   }
   var AL = arm(1), AR = arm(-1);
+  rig.build(root);
+  lap.scale.setScalar(HIDE); lids.forEach(function (l) { l.scale.setScalar(HIDE); });
   var c = { root: root, hips: hips, spine: spine, chestG: chestG, head: head, L: L, R: R, AL: AL, AR: AR, skirt: skirt, lap: lap, eyes: eyes, lids: lids, look: look,
     lookKey: lookKey({ robe: rb.k, hair: hair, hat: !!look.hat, beads: !!look.beads, hand: look.hand || 'none' }),
-    cur: {}, walkP: 0, speed: 0, dirSign: 1, act: null, actT: 0, angle: 0, edge: 0, item: null };
+    cur: {}, walkP: 0, speed: 0, dirSign: 1, act: null, actT: 0, angle: 0, edge: 0, item: null, eyesClosed: false, crossOn: false, blinkT: 1 + Math.random() * 3 };
   buildItem(c, look.hand || 'none');
   return c;
 }
@@ -528,47 +559,65 @@ function itemArms(p, hand) {
   if (hand === 'lotus') { p.lsx = -0.62; p.rsx = -0.62; p.lsy = 0; p.rsy = 0; p.lsz = -0.5; p.rsz = 0.5; p.lel = -1.2; p.rel = -1.2; p.hd = 0.1; p.lc = 0.35; p.rc = 0.35; p.lwx = 0; p.rwx = 0; p.lwy = 1.1; p.rwy = -1.1; p.lwz = 0; p.rwz = 0; }
   return p;
 }
+// hoa sen (dùng cho hoa cầm tay, hoa đăng, cá hóa thân): hai tầng cánh hồng trắng, nhụy vàng, đặt vào Parts tại ma trận m
+function lotusParts(pp, m, open) {
+  var pink = lin('#F2A0BC'), white = lin('#FFF5F6');
+  open = open === undefined ? 1 : open;
+  for (var layer = 0; layer < 3; layer++) {
+    var np = [8, 6, 5][layer], tilt = [1.05, 0.6, 0.25][layer] * open + 0.15, sz = [1, 0.8, 0.6][layer];
+    for (var k = 0; k < np; k++) {
+      var ya = k / np * Math.PI * 2 + layer * 0.4, pet = new T.SphereGeometry(1, 8, 5); pet.translate(0, 0, 1);
+      var mm = m.clone().multiply(new T.Matrix4().makeRotationY(ya)).multiply(new T.Matrix4().makeRotationX(-tilt)).multiply(new T.Matrix4().makeScale(0.075 * sz, 0.03 * sz, 0.13 * sz));
+      pp.add(pet, function (l) { return mixC(white, pink, sstep(0.3, 1.9, l.z)); }, mm);
+    }
+  }
+  pp.add(new T.SphereGeometry(0.05, 10, 6), lin('#F5CD52'), m.clone().multiply(MX([0, 0.05, 0], null, [1, 0.6, 1])));
+}
 function buildItem(c, hand) {
   if (hand === 'none') return;
   var p = itemArms(base(), hand);
   setPose(c, p, null); c.root.updateMatrixWorld(true);
   var hL = new T.Vector3(), hR = new T.Vector3(); c.AL.hand.getWorldPosition(hL); c.AR.hand.getWorldPosition(hR);
-  var g = new T.Group(); c.root.add(g);
+  var pp = new Parts(), sY = A3.shadeY, wood = lin('#8A5A2B'), woodS = sY(wood, mixC(wood, lin('#2A1A10'), 0.4), mixC(wood, CC.white, 0.2));
   if (hand === 'fan') {
     // nắm đúng chuôi quạt trong tay phải; đinh chốt dưới ngón út, quạt xòe lên chếch về phía vai trái
     var fgo = new T.Group(); c.AR.H.g.add(fgo);
     fgo.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(new T.Vector3(0, 1, 0), new T.Vector3(0, 0, 1), new T.Vector3(1, 0, 0)));
     fgo.position.set(0.03, -0.125, -0.07);
-    var R0 = 0.18, R1 = 0.5, N = 13, A0 = 0.34, SPAN = 0.66;
-    for (var i = 0; i < N - 1; i++) {
-      var a0 = Math.PI * (A0 + i * SPAN / (N - 1)), a1 = Math.PI * (A0 + (i + 1) * SPAN / (N - 1));
-      var wg = new T.Mesh(new T.RingGeometry(R0, R1, 4, 1, a0, a1 - a0), i % 2 ? fanM2 : fanM); wg.castShadow = true; fgo.add(wg);
-    }
-    for (var j = 0; j < N; j++) { var aj = Math.PI * (A0 + j * SPAN / (N - 1)), Lr = (j === 0 || j === N - 1) ? R1 : R0 + 0.02; var rbm = mesh(new T.BoxGeometry(0.018, Lr, 0.008), stickM, false); rbm.position.set(Math.cos(aj) * Lr / 2, Math.sin(aj) * Lr / 2, j * 0.0015 - 0.008); rbm.rotation.z = aj - Math.PI / 2; fgo.add(rbm); }
-    var edge = mesh(new T.TorusGeometry(R1, 0.01, 6, 30, Math.PI * SPAN), fanEdge, false); edge.rotation.z = Math.PI * A0; fgo.add(edge);
-    var pivot = mesh(cyl(0.016, 0.016, 0.04, 10), M('#C98A3A'), false); pivot.rotation.x = Math.PI / 2; fgo.add(pivot);
-    c.item = fgo; c.root.remove(g); return;
+    var R0 = 0.18, R1 = 0.5, N = 13, A0 = 0.34, SPAN = 0.66, paper = lin('#E36A3B'), paper2 = lin('#CF5530');
+    // giấy quạt gấp nếp: mỗi nan một dải, nếp lồi lõm xen kẽ
+    var fan = new T.RingGeometry(R0, R1, (N - 1) * 2, 2, Math.PI * A0, Math.PI * SPAN), fp = fan.attributes.position;
+    for (var i = 0; i < fp.count; i++) { var ang = Math.atan2(fp.getY(i), fp.getX(i)), u = (ang - Math.PI * A0) / (Math.PI * SPAN) * (N - 1) * 2; fp.setZ(i, (Math.round(u) % 2 ? 0.012 : -0.012) * Math.hypot(fp.getX(i), fp.getY(i)) / R1); }
+    fan.computeVertexNormals();
+    pp.add(fan, function (l) { var a = Math.atan2(l.y, l.x), u = (a - Math.PI * A0) / (Math.PI * SPAN) * (N - 1); return mixC(Math.floor(u) % 2 ? paper2 : paper, lin('#F7D9A8'), sstep(R1 - 0.07, R1 - 0.01, Math.hypot(l.x, l.y)) * 0.6); });
+    for (var j = 0; j < N; j++) { var aj = Math.PI * (A0 + j * SPAN / (N - 1)), Lr = (j === 0 || j === N - 1) ? R1 : R0 + 0.02; pp.add(new T.BoxGeometry(0.018, Lr, 0.008), woodS, MX([Math.cos(aj) * Lr / 2, Math.sin(aj) * Lr / 2, j * 0.0015 - 0.008], [0, 0, aj - Math.PI / 2])); }
+    pp.add(new T.TorusGeometry(R1, 0.01, 6, 30, Math.PI * SPAN), lin('#F2C14E'), MX(null, [0, 0, Math.PI * A0]));
+    pp.add(new T.CylinderGeometry(0.016, 0.016, 0.04, 10), lin('#C98A3A'), MX(null, [Math.PI / 2, 0, 0]));
+    fgo.add(pp.mesh(ITEM_MAT, true, true));
+    c.item = fgo; return;
   }
+  var g = new T.Group(); c.root.add(g);
   if (hand === 'lantern') {
     // cán cầm tay trái chếch vào giữa và ra trước; đèn treo đầu cán, phía trước người như soi đường
-    var tip = new T.Vector3(-0.05, hL.y + 0.32, hL.z + 0.62);
-    var poleLen = hL.distanceTo(tip), pole = mesh(cyl(0.02, 0.02, poleLen, 6), stickM);
-    pole.position.copy(hL).add(tip).multiplyScalar(0.5); pole.lookAt(tip); pole.rotateX(Math.PI / 2); g.add(pole);
-    var cord = mesh(cyl(0.006, 0.006, 0.18, 4), M('#5E241A'), false); cord.position.set(tip.x, tip.y - 0.09, tip.z); g.add(cord);
-    var lan = mesh(sph(0.17, 16, 12), M('#E8642F', { emissive: 0xFF8A3A, emissiveIntensity: 1.0 }), false); lan.scale.y = 1.25; lan.position.set(tip.x, tip.y - 0.36, tip.z); g.add(lan);
-    var cap1 = mesh(cyl(0.08, 0.08, 0.04, 10), M('#9B3B2A'), false); cap1.position.set(tip.x, tip.y - 0.16, tip.z); g.add(cap1);
-    var cap2 = cap1.clone(); cap2.position.y = tip.y - 0.57; g.add(cap2);
-    var tass = mesh(cyl(0.01, 0.01, 0.14, 4), M('#E39B2E'), false); tass.position.set(tip.x, tip.y - 0.66, tip.z); g.add(tass);
-    var gs = new T.Sprite(new T.SpriteMaterial({ map: glowTex('rgba(255,170,90,1)'), transparent: true, depthWrite: false })); gs.scale.setScalar(1.1); gs.position.copy(lan.position); g.add(gs);
+    var tip = new T.Vector3(-0.05, hL.y + 0.32, hL.z + 0.62), mid = hL.clone().add(tip).multiplyScalar(0.5);
+    var pm = new T.Matrix4().lookAt(hL, tip, new T.Vector3(0, 1, 0)).multiply(new T.Matrix4().makeRotationX(Math.PI / 2));
+    pm.setPosition(mid);
+    pp.add(new T.CylinderGeometry(0.02, 0.02, hL.distanceTo(tip), 6), woodS, pm);
+    pp.add(new T.CylinderGeometry(0.006, 0.006, 0.18, 4), lin('#5E241A'), MX([tip.x, tip.y - 0.09, tip.z]));
+    [0.16, 0.57].forEach(function (dy) { pp.add(A3.lathe([[0.001, -0.025], [0.085, -0.02], [0.08, 0.02], [0.001, 0.025]], 14), lin('#9E4434'), MX([tip.x, tip.y - dy, tip.z])); });
+    pp.add(A3.lathe([[0.001, -0.17], [0.03, -0.16], [0.02, -0.02], [0.001, 0]], 8), lin('#E39B2E'), MX([tip.x, tip.y - 0.6, tip.z]));
+    g.add(pp.mesh(ITEM_MAT, true, true));
+    var lg = new Parts();
+    lg.add(A3.folds(new T.SphereGeometry(0.17, 18, 12), 10, function () { return 0.04; }), function (l) { return mixC(lin('#E8642F'), lin('#FFC27A'), sstep(0.1, -0.12, Math.abs(l.y) - 0.1)); }, MX([tip.x, tip.y - 0.36, tip.z], null, [1, 1.25, 1]));
+    g.add(lg.mesh(ITEM_GLOW, false, false));
+    var gs = new T.Sprite(new T.SpriteMaterial({ map: glowTex('rgba(255,170,90,1)'), transparent: true, depthWrite: false })); gs.scale.setScalar(1.1); gs.position.set(tip.x, tip.y - 0.36, tip.z); g.add(gs);
     c.AL.H.g.attach(g); c.item = g; return;
   }
   if (hand === 'lotus') {
-    var mid = hL.clone().add(hR).multiplyScalar(0.5);
-    var lot = new T.Group(); lot.position.copy(mid).add(new T.Vector3(0, 0.1, 0.02)); g.add(lot);
-    lot.add(mesh(cyl(0.24, 0.2, 0.04, 18), M('#6FA864'), false));
-    for (var li = 0; li < 8; li++) { var la = li / 8 * Math.PI * 2; var pt = mesh(new T.ConeGeometry(0.075, 0.3, 6), M(li % 2 ? '#F4B6C8' : '#E68FAA', { roughness: 0.6 }), false); pt.position.set(Math.cos(la) * 0.09, 0.15, Math.sin(la) * 0.09); pt.rotation.z = -Math.cos(la) * 0.5; pt.rotation.x = Math.sin(la) * 0.5; lot.add(pt); }
-    for (var lj = 0; lj < 5; lj++) { var lb = lj / 5 * Math.PI * 2 + 0.3; var p2 = mesh(new T.ConeGeometry(0.06, 0.26, 6), M('#F7C6D4'), false); p2.position.set(Math.cos(lb) * 0.04, 0.2, Math.sin(lb) * 0.04); p2.rotation.z = -Math.cos(lb) * 0.2; p2.rotation.x = Math.sin(lb) * 0.2; lot.add(p2); }
-    var core = mesh(sph(0.05, 8, 6), M('#F2C14E'), false); core.position.y = 0.14; lot.add(core);
+    var m0 = hL.clone().add(hR).multiplyScalar(0.5).add(new T.Vector3(0, 0.1, 0.02));
+    pp.add(new T.CylinderGeometry(0.24, 0.2, 0.04, 18), A3.shade('#6FA864'), MX([m0.x, m0.y, m0.z]));
+    lotusParts(pp, new T.Matrix4().makeTranslation(m0.x, m0.y + 0.02, m0.z).multiply(new T.Matrix4().makeScale(1.7, 1.7, 1.7)));
+    g.add(pp.mesh(ITEM_MAT, true, true));
     c.chestG.attach(g); c.item = g;
   }
 }
@@ -584,7 +633,10 @@ function setPose(c, p, dt, rate) {
   c.AL.sh.rotation.set(q.lsx, q.lsy, q.lsz); c.AR.sh.rotation.set(q.rsx, q.rsy, q.rsz);
   c.AL.el.rotation.x = q.lel; c.AR.el.rotation.x = q.rel;
   setHand(c.AL.H, q.lc, q.lwx, q.lwy, q.lwz); setHand(c.AR.H, q.rc, q.rwx, q.rwy, q.rwz);
-  c.skirt.visible = !p.cross; c.lap.visible = !!p.cross;
+  var cr = !!p.cross;
+  if (c.crossOn !== cr) { c.crossOn = cr; c.skirt.scale.setScalar(cr ? HIDE : 1); c.lap.scale.setScalar(cr ? 1 : HIDE); }
+  // vạt áo nghiêng theo đùi (quỳ, nhặt rác) và đung đưa nhẹ khi bước
+  if (!cr) c.skirt.rotation.set(0.5 * Math.min(0, (q.lhx + q.rhx) / 2), 0, 0.05 * (q.lhx - q.rhx));
   if (p.cross) sitCross(c);
   else { c.L.ank.rotation.set(0, 0, 0); c.R.ank.rotation.set(0, 0, 0); c.L.hip.rotation.set(q.lhx, 0, q.lhz); c.R.hip.rotation.set(q.rhx, 0, q.rhz); c.L.knee.rotation.x = q.lkn; c.R.knee.rotation.x = q.rkn; }
   c.chestG.scale.set(1 + q.breath * 0.035, 1 + q.breath * 0.025, 1 + q.breath * 0.05);
@@ -618,12 +670,24 @@ function sitCross(c) {
     lg.ank.rotation.set(Math.PI / 2 - 0.25, lg.footRoll, 0, 'YXZ');
   });
 }
-function closeEyes(c, on) { if (c.eyesClosed === on) return; c.eyesClosed = on; c.eyes.forEach(function (e) { e.visible = !on; }); c.lids.forEach(function (l) { l.visible = on; }); }
+function closeEyes(c, on) {
+  if (c.eyesClosed === on) return; c.eyesClosed = on;
+  c.eyes.forEach(function (e) { e.scale.set(1, on ? HIDE : 1, 1); }); c.lids.forEach(function (l) { l.scale.setScalar(on ? 1 : HIDE); });
+}
+// chớp mắt ngẫu nhiên khi mắt đang mở
+function blink(c, dt) {
+  if (c.eyesClosed) return;
+  c.blinkT -= dt;
+  var s = c.blinkT < 0.14 && c.blinkT > 0 ? 0.1 + 0.9 * Math.abs(c.blinkT - 0.07) / 0.07 : 1;
+  if (c.blinkT <= 0) c.blinkT = 2.2 + Math.random() * 3;
+  c.eyes.forEach(function (e) { e.scale.y = s; });
+}
 function ease(t) { return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t); }
 function seg(t, a, b) { return ease((t - a) / (b - a)); }
 function lerp(a, b, k) { return a + (b - a) * k; }
 function mix(p, q, k) { var o = {}; J.forEach(function (j) { o[j] = lerp(p[j], q[j], k); }); if (k > 0.5 && q.cross) o.cross = 1; else if (p.cross && k <= 0.5) o.cross = 1; return o; }
-var PRAY = { sx: -0.325, sz: -0.6125, sy: -0.45, el: -1.858, wx: -0.775, wy: -0.767, wz: -0.2375 };   // hai lòng bàn tay áp vào nhau giữa ngực
+// chắp tay: cẳng tay dựng lên, hai lòng bàn tay áp vào nhau trước ngực, đầu ngón hướng lên (góc tìm bằng dò số theo vị trí và hướng bàn tay)
+var PRAY = { sx: -0.894, sz: -0.325, sy: -0.596, el: -1.773, wx: -0.491, wy: -0.622, wz: 0.268 };
 function prayArms(p, w) {
   w = w === undefined ? 1 : w;
   p.lsx = lerp(p.lsx, PRAY.sx, w); p.rsx = lerp(p.rsx, PRAY.sx, w); p.lsz = lerp(p.lsz, PRAY.sz, w); p.rsz = lerp(p.rsz, -PRAY.sz, w);
@@ -661,7 +725,8 @@ function walkLegs(p, phase, k) {
   return s;
 }
 function pose(c, time) {
-  var p = base(); p.sp = 0.02 * Math.sin(time * 1.6 + c.angle * 5);
+  // đứng yên vẫn thở nhẹ: ngực phồng, vai nhấc theo nhịp
+  var p = base(), br = 0.5 + 0.5 * Math.sin(time * 2.0 + c.angle * 5); p.sp = 0.015 * br; p.breath = 0.3 * br; p.lsz += 0.02 * br; p.rsz -= 0.02 * br;
   var hand = c.look && c.look.hand || 'none';
   if (c.speed > 0.05) {
     var k = Math.min(1, c.speed / 2.6), s = walkLegs(p, c.walkP, k);
@@ -687,7 +752,7 @@ function pose(c, time) {
   closeEyes(c, eyes);
   return p;
 }
-function applyPose(c, dt, time) { setPose(c, pose(c, time), dt, 12); }
+function applyPose(c, dt, time) { setPose(c, pose(c, time), dt, 12); blink(c, dt || 0); }
 function act(c, name) { c.act = name; c.actT = 0; }
 // vị trí trên lối đi; khi thả cá nhân vật bước ra sát mép nước (c.edge)
 function edgeOf(c) {
@@ -864,7 +929,7 @@ var labelsEl = $('labels');
 var myBub = document.createElement('div'); myBub.className = 'bub'; myBub.hidden = true; labelsEl.appendChild(myBub);
 var relBub = document.createElement('div'); relBub.className = 'bub'; relBub.hidden = true; labelsEl.appendChild(relBub);
 function spawnMe() {
-  if (me) scene.remove(me.root);
+  if (me) disposeTree(me.root);
   var keepA = me ? me.angle : Math.random() * Math.PI * 2, keepR = me ? me.root.rotation.y : null;
   me = chibi(S.look); me.angle = keepA; placeOnPath(me); me.root.rotation.y = keepR !== null ? keepR : Math.atan2(-Math.cos(me.angle), -Math.sin(me.angle));
   scene.add(me.root);
@@ -893,7 +958,7 @@ function getRemote(id, info) {
 }
 function removeRemote(id) {
   var r = remotes[id]; if (!r) return;
-  scene.remove(r.root); r.tag.remove(); r.bub.remove();
+  disposeTree(r.root); r.tag.remove(); r.bub.remove();
   S.fish.forEach(function (F) { if (F.owner === r) { F.state = 'fade'; F.t = 0; } });
   if (S.ev && S.ev.c === r) S.ev = null;
   delete remotes[id]; renderCount();
@@ -1248,7 +1313,7 @@ function moEnter() {
   var lk = JSON.parse(JSON.stringify(S.look)); lk.hand = 'none';
   var key = chibi.keyOf(lk);
   if (!MO.monk || MO.key !== key) {
-    if (MO.monk) hall.remove(MO.monk.root);
+    if (MO.monk) disposeTree(MO.monk.root);
     var m = chibi(lk); MO.monk = m; MO.key = key; hall.add(m.root);
     m.root.position.set(-0.35, 0.2, 0.6); m.root.rotation.y = 0.55;
     var mal = new T.Group(); m.AR.H.g.add(mal);
@@ -1316,7 +1381,7 @@ function setNight(on) {
 function zenEnter() {
   ZEN.a = me ? me.angle + 0.12 : 0.6; ZEN.t = 0;
   var lk = JSON.parse(JSON.stringify(S.look)); lk.hand = 'none';
-  if (ZEN.ch) zenG.remove(ZEN.ch.root);
+  if (ZEN.ch) disposeTree(ZEN.ch.root);
   ZEN.ch = chibi(lk); zenG.add(ZEN.ch.root);
   var a = ZEN.a, r = R_OUT + 0.9;
   zenRock.position.set(Math.cos(a) * r, 0.17, Math.sin(a) * r); zenCush.position.set(Math.cos(a) * r, 0.41, Math.sin(a) * r);
@@ -1429,17 +1494,17 @@ function frame() {
 
   if (S.inLake && me) {
     Object.keys(remotes).forEach(function (id) {
-      var r = remotes[id], p = project(r, 2.55);
+      var r = remotes[id], p = project(r, 3.05);
       var vis = p.z < 1 && Math.abs(p.nx) < 1.05 && Math.abs(p.ny) < 1.05 && r.root.position.distanceTo(me.root.position) < 26;
       r.tag.hidden = !vis;
       if (vis) { r.tag.style.left = p.x + 'px'; r.tag.style.top = p.y + 'px'; r.bub.style.left = p.x + 'px'; r.bub.style.top = (p.y - 26) + 'px'; }
       else r.bub.hidden = true;
       r.tag.className = 'tag' + (S.ev && S.ev.c === r && !S.ev.done ? ' rel' : '');
     });
-    var mp = project(me, 2.8); myBub.style.left = mp.x + 'px'; myBub.style.top = mp.y + 'px';
+    var mp = project(me, 3.3); myBub.style.left = mp.x + 'px'; myBub.style.top = mp.y + 'px';
     var hl = $('hintL'), hr = $('hintR'); hl.hidden = hr.hidden = true; relBub.hidden = true;
     if (S.ev && !S.ev.done) {
-      var c = S.ev.c, p2 = project(c, 2.55);
+      var c = S.ev.c, p2 = project(c, 3.05);
       var seen = p2.z < 1 && Math.abs(p2.nx) < 0.95 && Math.abs(p2.ny) < 0.95 && c.root.position.distanceTo(me.root.position) < 24;
       if (seen !== S.ev.seen) { S.ev.seen = seen; renderHUD(); }
       if (seen) { relBub.hidden = false; relBub.textContent = c.name + ' vừa thả cá'; relBub.style.left = p2.x + 'px'; relBub.style.top = (p2.y - 26) + 'px'; }
@@ -1459,15 +1524,22 @@ requestAnimationFrame(frame);
 
 function makePreview(cv) {
   var r2 = new T.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
-  r2.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-  var sc2 = new T.Scene();
-  sc2.add(new T.HemisphereLight(0xFFF1DE, 0x8AA88A, 0.9));
-  var dl = new T.DirectionalLight(0xFFE2BC, 0.8); dl.position.set(3, 6, 5); sc2.add(dl);
-  var ped = mesh(cyl(1.25, 1.35, 0.22, 40), M('#F4B6C8'), false); ped.position.y = -0.11; sc2.add(ped);
-  var ped2 = mesh(cyl(1.05, 1.05, 0.03, 40), M('#F2C14E'), false); ped2.position.y = 0.01; sc2.add(ped2);
-  var cam2 = new T.PerspectiveCamera(32, 1, 0.1, 50); cam2.position.set(0, 1.75, 6.6); cam2.lookAt(0, 1.3, 0);
+  r2.setPixelRatio(Q.pixelRatio()); r2.outputEncoding = T.sRGBEncoding;
+  r2.shadowMap.enabled = !Q.low; r2.shadowMap.type = T.PCFSoftShadowMap;
+  var sc2 = new T.Scene(), env2 = A3.makeEnv(r2, '#FFE9F0', '#FFF4E6', '#F4D6C8');
+  sc2.environment = env2;
+  sc2.add(new T.HemisphereLight(lin('#FFF3E3'), lin('#E9C9B8'), 0.35));
+  var dl = new T.DirectionalLight(lin('#FFE3C0'), 0.8); dl.position.set(3, 6, 5); dl.castShadow = true; dl.shadow.mapSize.set(512, 512);
+  (function (sc) { sc.left = -2; sc.right = 2; sc.top = 3.5; sc.bottom = -1; sc.near = 1; sc.far = 15; })(dl.shadow.camera);
+  dl.shadow.bias = -0.0008; dl.shadow.normalBias = 0.02; dl.shadow.radius = 3; sc2.add(dl);
+  // bệ tròn hồng viền vàng, mép bo mềm
+  var pp = new Parts();
+  pp.add(A3.lathe([[0.001, -0.24], [1.3, -0.24], [1.36, -0.18], [1.36, -0.06], [1.28, 0], [0.001, 0]], 48), A3.shade('#F4B6C8', 0.25, 0.15));
+  pp.add(new T.TorusGeometry(1.08, 0.025, 8, 64), lin('#F2C14E'), MX([0, 0.005, 0], [Math.PI / 2, 0, 0]));
+  sc2.add(pp.mesh(VC({ roughness: 0.6 }), false, true));
+  var cam2 = new T.PerspectiveCamera(32, 1, 0.1, 50); cam2.position.set(0, 1.9, 7.9); cam2.lookAt(0, 1.5, 0);
   var ch = null, alive = true, last = performance.now(), tt = 0, spin = 0;
-  function set(look) { if (ch) sc2.remove(ch.root); ch = chibi(look); sc2.add(ch.root); }
+  function set(look) { if (ch) disposeTree(ch.root); ch = chibi(look); sc2.add(ch.root); }
   function size() { var w = cv.clientWidth || 300, h = cv.clientHeight || 300; r2.setSize(w, h, false); cam2.aspect = w / h; cam2.updateProjectionMatrix(); }
   function loop(now) {
     if (!alive) return;
@@ -1480,7 +1552,7 @@ function makePreview(cv) {
   return {
     set: set,
     wave: function (n) { if (ch) act(ch, n); },
-    stop: function () { alive = false; r2.dispose(); }
+    stop: function () { alive = false; if (ch) disposeTree(ch.root); env2.dispose(); r2.dispose(); }
   };
 }
 
