@@ -146,14 +146,14 @@ Q.onChange(function (low) {
     c = mixC(mixC(pathC, pathD, nz * 0.5), c, sstep(0.7, 1.05, Math.abs(r - R_WALK)));
     return mixC(c, far, sstep(45, 95, r));
   }
-  var g1 = new T.RingGeometry(R_OUT, R_WALK + 5, 192, 30); g1.rotateX(-Math.PI / 2);
+  var g1 = new T.RingGeometry(R_OUT, R_WALK + 5, 160, 22); g1.rotateX(-Math.PI / 2);
   var g2 = new T.RingGeometry(R_WALK + 5, 170, 128, 14); g2.rotateX(-Math.PI / 2);
   gp.add(g1, groundCol); gp.add(g2, groundCol);
 
   /* ---- đảo giữa hồ + lòng hồ (nhìn thấy qua nước): một mặt tiện tròn từ tâm ra bờ ---- */
   var ISL_TOP = 0.45, prof = [];
-  for (i = 0; i <= 60; i++) {
-    var r = i / 60 * R_OUT, y;
+  for (i = 0; i <= 36; i++) {
+    var r = i / 36 * R_OUT, y;
     if (r < R_IN - 0.9) y = ISL_TOP;
     else if (r < R_IN + 0.5) y = A3.clamp(ISL_TOP - (r - (R_IN - 0.9)) / 1.4 * (ISL_TOP + 0.45), -0.45, ISL_TOP) ;
     else if (r < R_OUT - 0.7) { var u = (r - R_IN - 0.5) / (R_OUT - R_IN - 1.2); y = -0.45 - 0.5 * Math.sin(u * Math.PI); }
@@ -162,8 +162,8 @@ Q.onChange(function (low) {
   }
   var ISL_SHORE = R_IN - 0.9 + (ISL_TOP - WATER_Y) / (ISL_TOP + 0.45) * 1.4;
   var deep = lin('#2F7880'), shallow = lin('#76B3A3'), bankC = lin('#C9B288'), islG = lin('#A6D08E');
-  var bed = lathe(prof, 160);
-  if (bed.attributes.normal.getY(Math.floor(bed.attributes.normal.count / 2)) < 0) bed = lathe(prof.slice().reverse(), 160);
+  var bed = lathe(prof, 128);
+  if (bed.attributes.normal.getY(Math.floor(bed.attributes.normal.count / 2)) < 0) bed = lathe(prof.slice().reverse(), 128);
   gp.add(bed, function (l, w) {
     var r = Math.hypot(w.x, w.z), nz = noise(w);
     if (r < R_IN - 0.9) return mixC(mixC(islG, grassD, nz * 0.5), sandC, sstep(R_IN - 1.6, R_IN - 0.9, r));
@@ -197,11 +197,11 @@ Q.onChange(function (low) {
   function stoneCol(base) { return shadeY(base, mixC(base, lin('#8E8577'), 0.45), mixC(base, lin('#FFFFFF'), 0.25)); }
   for (i = 0; i < 170; i++) {
     a = i / 170 * Math.PI * 2 + (rnd() - 0.5) * 0.02; var rs = R_OUT - 0.12 + rnd() * 0.3, s = 0.16 + rnd() * 0.18;
-    sp.add(rockGeo(i + 3, 9, 6, 0.45), stoneCol(stoneCols[i % 4]), MX([Math.cos(a) * rs, 0.0 + rnd() * 0.04, Math.sin(a) * rs], [0, rnd() * 6, 0], [s * (1 + rnd() * 0.5), s * 0.6, s]));
+    sp.add(rockGeo(i + 3, 7, 5, 0.45), stoneCol(stoneCols[i % 4]), MX([Math.cos(a) * rs, 0.0 + rnd() * 0.04, Math.sin(a) * rs], [0, rnd() * 6, 0], [s * (1 + rnd() * 0.5), s * 0.6, s]));
   }
   for (i = 0; i < 64; i++) {
     a = i / 64 * Math.PI * 2 + rnd() * 0.05; var ri = ISL_SHORE - 0.15 + rnd() * 0.3, s2 = 0.18 + rnd() * 0.2;
-    sp.add(rockGeo(i + 400, 9, 6, 0.45), stoneCol(stoneCols[(i + 1) % 4]), MX([Math.cos(a) * ri, WATER_Y + 0.02, Math.sin(a) * ri], [0, rnd() * 6, 0], [s2 * 1.3, s2 * 0.6, s2]));
+    sp.add(rockGeo(i + 400, 7, 5, 0.45), stoneCol(stoneCols[(i + 1) % 4]), MX([Math.cos(a) * ri, WATER_Y + 0.02, Math.sin(a) * ri], [0, rnd() * 6, 0], [s2 * 1.3, s2 * 0.6, s2]));
   }
   function mossy(base) { var f = stoneCol(base); return function (l, w, n) { var c0 = f(l, w, n); return n.y > 0.5 ? mixC(c0, moss, sstep(0.5, 0.9, n.y) * 0.6) : c0; }; }
   // đá lớn: ngoài lối đi (không che rác trên bờ) và vài tảng trên đảo
@@ -260,9 +260,9 @@ Q.onChange(function (low) {
       leaves.add(new T.SphereGeometry(1, res, Math.round(res * 0.65)), canopyCol(base), MX([x + Math.cos(aa) * d * s, y0 + (2.3 + (j === 0 ? 0.55 : r() * 0.5)) * s, z + Math.sin(aa) * d * s], null, [rr3 * s, rr3 * 0.9 * s, rr3 * s]));
     }
   }
-  for (i = 1; i < 9; i++) { a = i / 9 * Math.PI * 2 + 0.3; tree(Math.cos(a) * 8.8, ISL_TOP, Math.sin(a) * 8.8, 1.25 + (i % 3) * 0.2, i + 11, 16); }
+  for (i = 1; i < 9; i++) { a = i / 9 * Math.PI * 2 + 0.3; tree(Math.cos(a) * 9.2, ISL_TOP, Math.sin(a) * 9.2, 1.0 + (i % 3) * 0.15, i + 11, 13); }
   // cây vòng ngoài trồng xa lối đi để không che tầm nhìn
-  for (i = 0; i < 40; i++) { a = i / 40 * Math.PI * 2 + (i % 3) * 0.05; var ro = 36 + (i % 4) * 4; tree(Math.cos(a) * ro, 0, Math.sin(a) * ro, 1.3 + (i % 5) * 0.2, i + 40, 10); }
+  for (i = 0; i < 40; i++) { a = i / 40 * Math.PI * 2 + (i % 3) * 0.05; var ro = 36 + (i % 4) * 4; tree(Math.cos(a) * ro, 0, Math.sin(a) * ro, 1.3 + (i % 5) * 0.2, i + 40, 8); }
   // bụi cây tròn có hoa ở ngoài lối đi
   [0.15, 0.95, 1.7, 2.6, 3.35, 4.1, 4.9, 5.7].forEach(function (ba, kk) {
     var x = Math.cos(ba) * 29.6, z = Math.sin(ba) * 29.6, sz = 0.7 + (kk % 3) * 0.15, base = greens[(kk + 1) % 4];
@@ -334,7 +334,7 @@ Q.onChange(function (low) {
       for (var layer = 0; layer < 2; layer++) {
         var np = layer ? 6 : 8, tilt = layer ? 0.55 : 1.0, sz2 = (layer ? 0.75 : 1) * fs;
         for (var k2 = 0; k2 < np; k2++) {
-          var ya = k2 / np * Math.PI * 2 + layer * 0.4, pet = new T.SphereGeometry(1, 8, 5); pet.translate(0, 0, 1);
+          var ya = k2 / np * Math.PI * 2 + layer * 0.4, pet = new T.SphereGeometry(1, 6, 4); pet.translate(0, 0, 1);
           var m3 = new T.Matrix4().makeTranslation(px, fy, pz).multiply(new T.Matrix4().makeRotationY(ya)).multiply(new T.Matrix4().makeRotationX(-tilt)).multiply(new T.Matrix4().makeScale(0.075 * sz2, 0.03 * sz2, 0.13 * sz2));
           lfl.add(pet, function (l) { return mixC(white, pink, sstep(0.3, 1.9, l.z)); }, m3);
         }
@@ -404,12 +404,12 @@ function buildHair(rig, head, k, hat, chest) {
   var hs = function (l, w, n) { return mixC(CC.hair, CC.hairL, sstep(0.3, 1, n.y) * 0.8); };
   var put = function (g, m) { rig.put(head, g, hs, m, true); };
   var capEnd = k === 'cuhanh' ? 0.34 : 0.4;
-  put(new T.SphereGeometry(HR * 1.055, 40, 14, 0, Math.PI * 2, 0, Math.PI * capEnd), MX([0, 0, -0.008], [0.08, 0, 0]));
-  put(new T.SphereGeometry(HR * 1.06, 36, 20, FRONT + 0.95, Math.PI * 2 - 1.9, 0, Math.PI * (k === 'ngan' ? 0.64 : 0.8)));
+  put(new T.SphereGeometry(HR * 1.055, 32, 10, 0, Math.PI * 2, 0, Math.PI * capEnd), MX([0, 0, -0.008], [0.08, 0, 0]));
+  put(new T.SphereGeometry(HR * 1.06, 28, 14, FRONT + 0.95, Math.PI * 2 - 1.9, 0, Math.PI * (k === 'ngan' ? 0.64 : 0.8)));
   // mái tóc: các lọn tròn dọc chân tóc trước trán
   for (var i = 0; i < 9; i++) {
     var ty = (i - 4) / 4 * 0.95, tp = onHead(ty, 0.29 - Math.abs(i - 4) * 0.028 - (i % 2) * 0.03, HR);
-    put(new T.SphereGeometry(0.14, 12, 9), A3.MXlook(tp, tp.clone().normalize(), [0.62, 0.92, 0.38], -ty * 0.45));
+    put(new T.SphereGeometry(0.14, 10, 7), A3.MXlook(tp, tp.clone().normalize(), [0.62, 0.92, 0.38], -ty * 0.45));
   }
   if (k === 'bui') {
     if (!hat) { put(new T.SphereGeometry(0.24, 20, 14), MX([0, 0.53, -0.31])); rig.put(head, new T.TorusGeometry(0.155, 0.03, 8, 22), CC.band, MX([0, 0.44, -0.26], [Math.PI / 2 + 0.6, 0, 0]), true); }
@@ -464,11 +464,11 @@ function chibi(look) {
   var hips = rig.bone(root, 0, 0.95, 0);
   function leg(sd) {
     var hip = rig.bone(hips, 0.16 * sd, 0, 0);
-    rig.put(hip, A3.limb(0.13, 0.115, 0.5, 14), pantsS);
+    rig.put(hip, A3.limb(0.13, 0.115, 0.5, 10), pantsS);
     var knee = rig.bone(hip, 0, -0.5, 0);
-    rig.put(knee, A3.limb(0.115, 0.1, 0.4, 14), pantsS);
+    rig.put(knee, A3.limb(0.115, 0.1, 0.4, 10), pantsS);
     var ank = rig.bone(knee, 0, -0.4, 0);
-    rig.put(ank, new T.SphereGeometry(1, 16, 10), shoeS, MX([0, -0.035, 0.06], null, [0.115, 0.075, 0.175]));
+    rig.put(ank, new T.SphereGeometry(1, 12, 8), shoeS, MX([0, -0.035, 0.06], null, [0.115, 0.075, 0.175]));
     var ft = new T.Group(); ft.position.set(0, -0.03, 0.07); ank.add(ft);       // hướng bàn chân (dùng khi ngồi xếp bằng)
     return { hip: hip, knee: knee, ank: ank, ft: ft };
   }
@@ -490,16 +490,16 @@ function chibi(look) {
   rig.put(chestG, new T.TorusGeometry(0.333, 0.032, 8, 36), robeD, MX([0, 0.0, 0], [Math.PI / 2, 0, 0]));
   rig.put(chestG, A3.capsule(0.085, 0.08, 12, 4), skinS, MX([0, 0.7, 0]));
   if (look.beads) {
-    for (var bi = 0; bi < 22; bi++) {
-      var ba = bi / 22 * Math.PI * 2, front = (Math.cos(ba) + 1) / 2;
-      rig.put(chestG, new T.SphereGeometry(0.03, 8, 6), sY(CC.bead, mixC(CC.bead, lin('#2A160C'), 0.5), mixC(CC.bead, CC.white, 0.35)),
+    for (var bi = 0; bi < 20; bi++) {
+      var ba = bi / 20 * Math.PI * 2, front = (Math.cos(ba) + 1) / 2;
+      rig.put(chestG, new T.SphereGeometry(0.032, 7, 5), sY(CC.bead, mixC(CC.bead, lin('#2A160C'), 0.5), mixC(CC.bead, CC.white, 0.35)),
         MX([Math.sin(ba) * (0.18 + 0.14 * front), 0.62 - 0.3 * Math.pow(front, 1.6), Math.cos(ba) * 0.17 + 0.155 * front + 0.04 + 0.03 * front]), true);
     }
     rig.put(chestG, new T.SphereGeometry(0.04, 10, 8), CC.ribbon, MX([0, 0.29, 0.4]), true);
     rig.put(chestG, A3.lathe([[0.001, -0.118], [0.045, -0.11], [0.028, -0.014], [0.001, 0]], 10), CC.ribbon, MX([0, 0.27, 0.4]), true);
   }
   var head = rig.bone(chestG, 0, 1.22, 0);
-  rig.put(head, new T.SphereGeometry(HR, 40, 28), function (l, w, n) { return mixC(CC.skinD, CC.skin, 0.55 + 0.45 * sstep(-0.9, 0.3, l.y / HR)); });
+  rig.put(head, new T.SphereGeometry(HR, 32, 22), function (l, w, n) { return mixC(CC.skinD, CC.skin, 0.55 + 0.45 * sstep(-0.9, 0.3, l.y / HR)); });
   [-1, 1].forEach(function (sd) {
     rig.put(head, new T.SphereGeometry(0.1, 10, 8), skinS, MX([HR * 0.92 * sd, -0.06, -0.02], null, [0.55, 1, 0.8]));
     rig.put(head, A3.skinPatch(0.17, 0.62, HR * 1.003), CC.blush, new T.Matrix4().makeRotationFromQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), onHead(0.6 * sd, -0.3, 1))));
@@ -529,10 +529,10 @@ function chibi(look) {
   }
   function arm(sd) {
     var sh = rig.bone(chestG, 0.36 * sd, 0.55, 0);
-    rig.put(sh, new T.SphereGeometry(0.155, 16, 12), robeShade);
-    rig.put(sh, A3.limb(0.14, 0.13, 0.43, 16), robeShade);
+    rig.put(sh, new T.SphereGeometry(0.155, 12, 9), robeShade);
+    rig.put(sh, A3.limb(0.14, 0.13, 0.43, 12), robeShade);
     var el = rig.bone(sh, 0, -0.43, 0);
-    rig.put(el, new T.SphereGeometry(0.135, 14, 10), robeShade);
+    rig.put(el, new T.SphereGeometry(0.135, 12, 8), robeShade);
     rig.put(el, A3.lathe([[0.17, -0.3], [0.2, -0.355], [0.232, -0.36], [0.225, -0.33], [0.19, -0.22], [0.15, -0.08], [0.13, 0.02]], 22), robeShade);
     rig.put(el, new T.TorusGeometry(0.226, 0.016, 6, 26), robeD, MX([0, -0.355, 0], [Math.PI / 2, 0, 0]));
     rig.put(el, A3.capsule(0.055, 0.08, 10, 3), skinS, MX([0, -0.36, 0]));
@@ -566,7 +566,7 @@ function lotusParts(pp, m, open) {
   for (var layer = 0; layer < 3; layer++) {
     var np = [8, 6, 5][layer], tilt = [1.05, 0.6, 0.25][layer] * open + 0.15, sz = [1, 0.8, 0.6][layer];
     for (var k = 0; k < np; k++) {
-      var ya = k / np * Math.PI * 2 + layer * 0.4, pet = new T.SphereGeometry(1, 8, 5); pet.translate(0, 0, 1);
+      var ya = k / np * Math.PI * 2 + layer * 0.4, pet = new T.SphereGeometry(1, 7, 4); pet.translate(0, 0, 1);
       var mm = m.clone().multiply(new T.Matrix4().makeRotationY(ya)).multiply(new T.Matrix4().makeRotationX(-tilt)).multiply(new T.Matrix4().makeScale(0.075 * sz, 0.03 * sz, 0.13 * sz));
       pp.add(pet, function (l) { return mixC(white, pink, sstep(0.3, 1.9, l.z)); }, mm);
     }
