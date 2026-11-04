@@ -125,6 +125,8 @@ var BACK_IC = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" strok
 var CHECK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 L10 17 L19 7"/></svg>';
 var LOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7A5A3A" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11 V8 a4 4 0 0 1 8 0 V11"/></svg>';
 function fmt(n) { return n.toLocaleString('vi-VN'); }
+// số phước để hiện: bản thử có phước vô hạn thì hiện ∞
+function phTxt() { return H.INFINITE_PHUOC ? '∞' : fmt(S.phuoc); }
 function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function later(fn, ms) { var t = setTimeout(fn, ms); timers.push(t); return t; }
 function every(fn, ms) { var t = setInterval(fn, ms); timers.push(t); return t; }
@@ -133,8 +135,8 @@ function cleanup() {
   cleanups.forEach(function (f) { try { f(); } catch (e) { /* bỏ qua */ } }); cleanups = [];
   if (preview) { preview.stop(); preview = null; }
 }
-function phuocPill() { return '<div class="pp">' + LOTUS_IC + '<span class="js-ph">' + fmt(S.phuoc) + '</span> phước</div>'; }
-H.onChange = function () { Array.prototype.forEach.call(document.querySelectorAll('.js-ph'), function (e) { e.textContent = fmt(S.phuoc); }); };
+function phuocPill() { return '<div class="pp">' + LOTUS_IC + '<span class="js-ph">' + phTxt() + '</span> phước</div>'; }
+H.onChange = function () { Array.prototype.forEach.call(document.querySelectorAll('.js-ph'), function (e) { e.textContent = phTxt(); }); };
 
 /* ---------- điều hướng ---------- */
 function setNav(t) { Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === t); }); }
@@ -175,7 +177,7 @@ function pagePhuoc() {
   var tyToday = H.store.get('tyDay', { d: '', n: 0 }); var tyN = tyToday.d === H.today() ? tyToday.n : 0;
   scr.innerHTML = '<div class="pg">' +
     '<div class="hd"><div><h1>Tích phước</h1><p class="lead">Làm việc thiện nhỏ mỗi ngày để có thêm lượt thả cá.</p></div></div>' +
-    '<div class="cardx"><div class="bal"><div><small>Phước điểm của bạn</small><b class="js-ph">' + fmt(S.phuoc) + '</b></div><div style="text-align:right"><small>Lượt thả hôm nay</small><span class="tn" id="tpTurns">Còn ' + S.turns + ' lượt</span></div></div>' +
+    '<div class="cardx"><div class="bal"><div><small>Phước điểm của bạn</small><b class="js-ph">' + phTxt() + '</b></div><div style="text-align:right"><small>Lượt thả hôm nay</small><span class="tn" id="tpTurns">Còn ' + S.turns + ' lượt</span></div></div>' +
     '<div class="xch"><span><b>100 phước</b> đổi được 1 lượt thả thêm</span><button type="button" class="b1" id="tpX"' + (S.phuoc < 100 ? ' disabled' : '') + '>Đổi 1 lượt</button></div></div>' +
     '<div class="note2"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="#F2C14E"/><circle cx="15" cy="10" r="6" fill="#EEF5F3"/></svg>Ngày rằm và mùng 1: tỉ lệ cá hóa thân tăng</div>' +
     actCard('#FFF1DC', ICON.incense, 'Thắp hương điểm danh', 'Mỗi ngày một nén hương ở chùa nhỏ bên hồ.', '+20 phước', 'Chuỗi ' + g.streak + ' ngày' + (didIncense ? ' · đã thắp hôm nay' : ''), didIncense ? '<span class="done">Đã thắp</span>' : '<button type="button" class="b1" data-go="incense">Thắp hương</button>') +
@@ -193,7 +195,7 @@ function pagePhuoc() {
   Array.prototype.forEach.call(scr.querySelectorAll('[data-go]'), function (b) {
     b.addEventListener('click', function () {
       var g2 = b.getAttribute('data-go');
-      if (g2 === 'lake') { show('ho'); H.toast('Đi dạo quanh hồ', 'Giữ mũi tên hai bên để đi. Thấy rác thì chạm để nhặt, thấy người thả cá thì tùy hỷ.'); }
+      if (g2 === 'lake') { show('ho'); H.toast('Đi dạo quanh hồ', 'Kéo cần điều khiển để đi khắp bờ hồ, kéo màn hình để xoay nhìn. Thấy rác thì chạm để nhặt, thấy người thả cá thì tùy hỷ.'); }
       if (g2 === 'incense') activity(actIncense);
       if (g2 === 'mo') activity(actMo);
       if (g2 === 'zen') activity(actZen);

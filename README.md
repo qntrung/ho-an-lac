@@ -70,7 +70,7 @@ Server chỉ chuyển tiếp: thêm trường `from` (id người gửi); có `t
 | `welcome` | server | `id`, `host` (máy này là chủ hồ?), `hostId`, `ids` |
 | `join` / `leave` | server | `id` người vào / ra |
 | `hello` | người chơi | `name`, `robe`, `a` (góc trên lối đi) |
-| `st` | người chơi, 10 lần/giây | `a` góc, `v` tốc độ, `d` hướng đi |
+| `st` | người chơi, 10 lần/giây | `a` góc, `v` tốc độ, `d` hướng đi; bản đi tự do gửi thêm `x`, `z` vị trí và `ry` hướng mặt (tùy chọn, bản cũ bỏ qua) |
 | `act` | người chơi | `n`: `throw` = thả cá (kèm `back`, `fk`), `pray`, `bow`, `niem`, `pick` |
 | `tuyhy` | người tùy hỷ | gửi riêng `to` người thả cá |
 | `trash` / `tnew` / `gone` | chủ hồ | danh sách rác, rác mới, rác đã có người nhặt (`by`) |
