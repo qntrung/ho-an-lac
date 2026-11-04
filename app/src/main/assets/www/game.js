@@ -81,96 +81,285 @@ function needMet(key) {
 function lookKey(l) { return [l.robe, l.hair, l.hat ? 1 : 0, l.beads ? 1 : 0, l.hand].join('|'); }
 
 /* ===================== Renderer & cảnh ===================== */
+var Q = A3.Quality, lin = A3.lin, mixC = A3.mixC, sstep = A3.sstep, MX = A3.MX, Parts = A3.Parts, VC = A3.VC, disposeTree = A3.disposeTree;
 var canvas = $('stage');
 var renderer = new T.WebGLRenderer({ canvas: canvas, antialias: true });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Q.pixelRatio());
+renderer.outputEncoding = T.sRGBEncoding;           // màu viết bằng hex sRGB, đổi sang linear khi tạo vật liệu (lin)
+renderer.shadowMap.enabled = !Q.low;
 renderer.shadowMap.type = T.PCFSoftShadowMap;
 var scene = new T.Scene();
-(function sky() {
-  var c = document.createElement('canvas'); c.width = 2; c.height = 256;
-  var x = c.getContext('2d'); var g = x.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#9FCFDB'); g.addColorStop(0.55, '#F1E6D6'); g.addColorStop(0.8, '#FBDDBA'); g.addColorStop(1, '#F6D3AE');
-  x.fillStyle = g; x.fillRect(0, 0, 2, 256);
-  scene.background = new T.CanvasTexture(c);
-})();
-scene.fog = new T.Fog(0xF3DCC0, 55, 150);
+function gradTex(stops) {
+  var c = document.createElement('canvas'); c.width = 2; c.height = 256; var x = c.getContext('2d'); var g = x.createLinearGradient(0, 0, 0, 256);
+  stops.forEach(function (s) { g.addColorStop(s[0], s[1]); }); x.fillStyle = g; x.fillRect(0, 0, 2, 256); return A3.canvasTex(c);
+}
+function glowTex(col) {
+  var c = document.createElement('canvas'); c.width = c.height = 128; var x = c.getContext('2d');
+  var g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, col); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); return A3.canvasTex(c);
+}
+scene.background = gradTex([[0, '#A9D6E8'], [0.5, '#D9ECEC'], [0.78, '#F8EBD9'], [1, '#F6E2CC']]);
+scene.fog = new T.Fog(lin('#F3E6D6'), 60, 175);
+var ENV_DAY = A3.makeEnv(renderer), ENV_NIGHT = null;
+scene.environment = ENV_DAY;
 var camera = new T.PerspectiveCamera(50, 1, 0.1, 400);
-scene.add(new T.HemisphereLight(0xFFE9CF, 0x5E7F52, 0.75));
-var sun = new T.DirectionalLight(0xFFD7A6, 1.05);
-sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
-(function (sc) { sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 160; })(sun.shadow.camera);
-sun.shadow.bias = -0.0008;
+// trời xanh nhạt + đất cỏ, cộng nắng ấm đổ bóng mềm; phần lớn ánh sáng nền đến từ môi trường (ENV_DAY)
+var hemi = new T.HemisphereLight(lin('#FFF3E3'), lin('#A9C98F'), 0.32); scene.add(hemi);
+var sun = new T.DirectionalLight(lin('#FFE3C0'), 0.85);
+sun.castShadow = !Q.low; sun.shadow.mapSize.set(1024, 1024);
+// khung bóng hẹp bám theo nhân vật để bóng nét (cập nhật trong frame)
+(function (sc) { sc.left = -24; sc.right = 24; sc.top = 24; sc.bottom = -24; sc.near = 1; sc.far = 140; })(sun.shadow.camera);
+sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
 scene.add(sun); scene.add(sun.target);
 
-function M(c, o) { return new T.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.85, metalness: 0 }, o || {})); }
+// vật liệu thường: màu hex sRGB -> linear; vật liệu có userData.shared không bị disposeTree giải phóng
+function M(c, o) {
+  o = Object.assign({}, o || {});
+  if (o.emissive !== undefined) o.emissive = lin(o.emissive);
+  return new T.MeshStandardMaterial(Object.assign({ color: lin(c), roughness: 0.85, metalness: 0, envMapIntensity: 0.5 }, o));
+}
+function shared(m) { m.userData.shared = true; return m; }
 function mesh(geo, mat, cast) { var m = new T.Mesh(geo, mat); m.castShadow = cast !== false; m.receiveShadow = true; return m; }
 function cyl(rt, rb, h, s) { return new T.CylinderGeometry(rt, rb, h, s || 14); }
 function sph(r, w, h) { return new T.SphereGeometry(r, w || 18, h || 14); }
 
-var WATER = M('#5FAAB0', { roughness: 0.16, metalness: 0.2, transparent: true, opacity: 0.9 });
-var PAG_LAMPS = [];
+var PAG_LAMPS = [], LANTERN_GLOWS = [];
 var R_IN = 12.8, R_OUT = 24, R_WALK = 26.6, WATER_Y = -0.07;
+var WORLD = {};
+// đổi cờ chất lượng lúc đang chạy: bật/tắt bóng và độ nét
+Q.onChange(function (low) {
+  renderer.setPixelRatio(Q.pixelRatio()); renderer.shadowMap.enabled = !low; sun.castShadow = !low;
+  if (typeof resize === 'function') resize();
+  [scene, typeof hall !== 'undefined' ? hall : null].forEach(function (sc) { if (sc) sc.traverse(function (o) { [].concat(o.material || []).forEach(function (m) { m.needsUpdate = true; }); }); });
+});
 (function buildWorld() {
-  // mặt nước thấp hơn bờ một chút: bãi cỏ là vành khuyên, có bờ đất và lòng hồ bên dưới
-  var ground = mesh(new T.RingGeometry(R_OUT + 1.2, 160, 160, 1), M('#93C27A'), false); ground.rotation.x = -Math.PI / 2; scene.add(ground);
-  var sand = mesh(new T.RingGeometry(R_OUT, R_OUT + 1.3, 160), M('#E3CC9A'), false); sand.rotation.x = -Math.PI / 2; sand.position.y = 0.02; scene.add(sand);
-  var path = mesh(new T.RingGeometry(R_WALK - 0.9, R_WALK + 0.9, 160), M('#DCC79F'), false); path.rotation.x = -Math.PI / 2; path.position.y = 0.025; scene.add(path);
-  var bed = mesh(new T.RingGeometry(R_IN, R_OUT, 160, 4), M('#3F7F86'), false); bed.rotation.x = -Math.PI / 2; bed.position.y = -0.9; scene.add(bed);
-  var bank = mesh(new T.CylinderGeometry(R_OUT, R_OUT, 0.95, 160, 1, true), M('#B39A6A'), false); bank.material.side = T.BackSide; bank.position.y = -0.46; scene.add(bank);
-  var water = mesh(new T.RingGeometry(R_IN, R_OUT, 160, 4), WATER, false); water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; scene.add(water);
-  var island = mesh(cyl(R_IN + 0.1, R_IN + 0.6, 1.3, 64), M('#A9D292'), false); island.position.y = -0.2; scene.add(island);
-  var isl2 = mesh(new T.RingGeometry(R_IN - 0.6, R_IN + 0.1, 96), M('#E3CC9A'), false); isl2.rotation.x = -Math.PI / 2; isl2.position.y = 0.46; scene.add(isl2);
+  var rnd = A3.rng(7), i, a, k;
+  var shadeY = A3.shadeY, lathe = A3.lathe, capsule = A3.capsule, rockGeo = A3.rockGeo;
 
-  var red = M('#9B3B2A'), redD = M('#7A2A1C'), cream = M('#F3E7CF'), stone = M('#CDBFA2'), gold = M('#E3A62E', { metalness: 0.4, roughness: 0.4 });
-  var pag = new T.Group(); pag.position.y = 0.45; scene.add(pag);
-  var base = mesh(new T.BoxGeometry(8, 0.6, 8), stone); base.position.y = 0.3; pag.add(base);
-  var walls = mesh(new T.BoxGeometry(5, 2.4, 5), cream); walls.position.y = 1.8; pag.add(walls);
-  [[-2.5, -2.5], [2.5, -2.5], [-2.5, 2.5], [2.5, 2.5]].forEach(function (p) { var c = mesh(cyl(0.18, 0.18, 2.5), red); c.position.set(p[0], 1.85, p[1]); pag.add(c); });
+  /* ---- mặt đất: bờ đất ướt -> cát -> cỏ, lối đi vòng quanh hồ; một lần vẽ ---- */
+  var gp = new Parts();
+  var sandC = lin('#EBD9B2'), sandD = lin('#DCC59A'), grass = lin('#A9D190'), grassD = lin('#93C27A'), earth = lin('#C9B088'), pathC = lin('#E6D3AA'), pathD = lin('#D5BF94'), far = lin('#B9D7A0');
+  function noise(w) { return 0.5 + 0.5 * Math.sin(w.x * 0.45 + Math.sin(w.z * 0.35) * 2) * Math.sin(w.z * 0.55); }
+  function groundCol(l, w) {
+    var r = Math.hypot(w.x, w.z), nz = noise(w), g = mixC(grass, grassD, nz * 0.6);
+    var c = mixC(earth, mixC(sandC, sandD, nz * 0.4), sstep(R_OUT, R_OUT + 0.45, r));
+    c = mixC(c, g, sstep(R_OUT + 1.0, R_OUT + 1.7, r));
+    c = mixC(mixC(pathC, pathD, nz * 0.5), c, sstep(0.7, 1.05, Math.abs(r - R_WALK)));
+    return mixC(c, far, sstep(45, 95, r));
+  }
+  var g1 = new T.RingGeometry(R_OUT, R_WALK + 5, 192, 30); g1.rotateX(-Math.PI / 2);
+  var g2 = new T.RingGeometry(R_WALK + 5, 170, 128, 14); g2.rotateX(-Math.PI / 2);
+  gp.add(g1, groundCol); gp.add(g2, groundCol);
+
+  /* ---- đảo giữa hồ + lòng hồ (nhìn thấy qua nước): một mặt tiện tròn từ tâm ra bờ ---- */
+  var ISL_TOP = 0.45, prof = [];
+  for (i = 0; i <= 60; i++) {
+    var r = i / 60 * R_OUT, y;
+    if (r < R_IN - 0.9) y = ISL_TOP;
+    else if (r < R_IN + 0.5) y = A3.clamp(ISL_TOP - (r - (R_IN - 0.9)) / 1.4 * (ISL_TOP + 0.45), -0.45, ISL_TOP) ;
+    else if (r < R_OUT - 0.7) { var u = (r - R_IN - 0.5) / (R_OUT - R_IN - 1.2); y = -0.45 - 0.5 * Math.sin(u * Math.PI); }
+    else y = -0.45 + 0.45 * sstep(R_OUT - 0.7, R_OUT, r);
+    prof.push([r, y]);
+  }
+  var ISL_SHORE = R_IN - 0.9 + (ISL_TOP - WATER_Y) / (ISL_TOP + 0.45) * 1.4;
+  var deep = lin('#2F7880'), shallow = lin('#76B3A3'), bankC = lin('#C9B288'), islG = lin('#A6D08E');
+  var bed = lathe(prof, 160);
+  if (bed.attributes.normal.getY(Math.floor(bed.attributes.normal.count / 2)) < 0) bed = lathe(prof.slice().reverse(), 160);
+  gp.add(bed, function (l, w) {
+    var r = Math.hypot(w.x, w.z), nz = noise(w);
+    if (r < R_IN - 0.9) return mixC(mixC(islG, grassD, nz * 0.5), sandC, sstep(R_IN - 1.6, R_IN - 0.9, r));
+    if (w.y > WATER_Y + 0.02) return mixC(sandC, bankC, 0.3);
+    var d = mixC(deep, shallow, sstep(-0.9, -0.3, w.y));
+    return mixC(d, bankC, sstep(-0.25, -0.05, w.y) * 0.8);
+  });
+  WORLD.ground = gp.mesh(VC({ roughness: 0.95, envMapIntensity: 0.25 }), false, true); scene.add(WORLD.ground);
+
+  /* ---- nước: đỉnh chuyển động bằng CPU (gợn sóng), trong suốt để thấy đáy; viền bọt ---- */
+  var wg = new T.RingGeometry(ISL_SHORE - 0.3, R_OUT + 0.08, 160, 12);
+  var wc = [], wp = wg.attributes.position, wDeep = lin('#4AA3AC'), wEdge = lin('#8ED0C8');
+  for (i = 0; i < wp.count; i++) {
+    var rr = Math.hypot(wp.getX(i), wp.getY(i)), edge = Math.min(rr - ISL_SHORE, R_OUT - rr);
+    var cc = mixC(wDeep, wEdge, sstep(3.5, 0.3, edge)); wc.push(cc.r, cc.g, cc.b);
+  }
+  wg.setAttribute('color', new T.Float32BufferAttribute(wc, 3));
+  var water = new T.Mesh(wg, new T.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.5, roughness: 0.07, metalness: 0.05, envMapIntensity: 0.9, depthWrite: false }));
+  water.rotation.x = -Math.PI / 2; water.position.y = WATER_Y; water.renderOrder = 10; scene.add(water);
+  WORLD.water = water; WORLD.waterBase = Float32Array.from(wp.array);
+  WORLD.waterAmp = new Float32Array(wp.count);
+  for (i = 0; i < wp.count; i++) { var r2 = Math.hypot(wp.getX(i), wp.getY(i)); WORLD.waterAmp[i] = sstep(0, 1.2, Math.min(r2 - ISL_SHORE, R_OUT - r2)); }
+  var fg = new T.RingGeometry(R_OUT - 0.42, R_OUT + 0.02, 160, 1), fg2 = new T.RingGeometry(ISL_SHORE - 0.02, ISL_SHORE + 0.38, 96, 1);
+  var fp = new Parts(); fp.add(fg, lin('#FFFFFF')); fp.add(fg2, lin('#FFFFFF'));
+  var foam = new T.Mesh(fp.geometry(), new T.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.32, depthWrite: false }));
+  foam.rotation.x = -Math.PI / 2; foam.position.y = WATER_Y + 0.03; foam.renderOrder = 11; scene.add(foam); WORLD.foam = foam;
+
+  /* ---- sỏi ven bờ + đá rêu lớn ---- */
+  var sp = new Parts();
+  var stoneCols = ['#C4BAA9', '#B3A998', '#CCC2B1', '#ADA497'].map(lin), moss = lin('#9CBF84');
+  function stoneCol(base) { return shadeY(base, mixC(base, lin('#8E8577'), 0.45), mixC(base, lin('#FFFFFF'), 0.25)); }
+  for (i = 0; i < 170; i++) {
+    a = i / 170 * Math.PI * 2 + (rnd() - 0.5) * 0.02; var rs = R_OUT - 0.12 + rnd() * 0.3, s = 0.16 + rnd() * 0.18;
+    sp.add(rockGeo(i + 3, 9, 6, 0.45), stoneCol(stoneCols[i % 4]), MX([Math.cos(a) * rs, 0.0 + rnd() * 0.04, Math.sin(a) * rs], [0, rnd() * 6, 0], [s * (1 + rnd() * 0.5), s * 0.6, s]));
+  }
+  for (i = 0; i < 64; i++) {
+    a = i / 64 * Math.PI * 2 + rnd() * 0.05; var ri = ISL_SHORE - 0.15 + rnd() * 0.3, s2 = 0.18 + rnd() * 0.2;
+    sp.add(rockGeo(i + 400, 9, 6, 0.45), stoneCol(stoneCols[(i + 1) % 4]), MX([Math.cos(a) * ri, WATER_Y + 0.02, Math.sin(a) * ri], [0, rnd() * 6, 0], [s2 * 1.3, s2 * 0.6, s2]));
+  }
+  function mossy(base) { var f = stoneCol(base); return function (l, w, n) { var c0 = f(l, w, n); return n.y > 0.5 ? mixC(c0, moss, sstep(0.5, 0.9, n.y) * 0.6) : c0; }; }
+  // đá lớn: ngoài lối đi (không che rác trên bờ) và vài tảng trên đảo
+  [[0.4, 29.4, 0.9], [1.25, 29.0, 0.7], [2.3, 29.8, 1.1], [3.0, 28.9, 0.6], [3.9, 29.6, 0.9], [4.8, 29.2, 0.75], [5.6, 29.9, 1.0], [6.05, 28.8, 0.55],
+    [1.0, R_IN - 1.2, 0.8], [2.6, R_IN - 1.0, 0.6], [4.4, R_IN - 1.3, 0.9], [5.5, R_IN - 1.1, 0.55]].forEach(function (b, kk) {
+    var y0 = b[1] < R_IN ? ISL_TOP : 0;
+    sp.add(rockGeo(100 + kk, 22, 14), mossy(stoneCols[kk % 4]), MX([Math.cos(b[0]) * b[1], y0 + b[2] * 0.25, Math.sin(b[0]) * b[1]], [0, kk, 0], [b[2] * 1.3, b[2] * 0.8, b[2]]));
+  });
+
+  /* ---- chùa trên đảo: mái cong, tường kem, cột son; đèn lồng phát sáng tách riêng ---- */
+  var pg = new Parts(), PY = ISL_TOP;
+  var cream = shade('#F3E7CF'), stoneP = shade('#D2C6AC', 0.4, 0.15), redC = shade('#B5513D'), roofC = shade('#C8604A', 0.4, 0.2), roofD = lin('#9E4434'), goldC = shade('#E8B04A', 0.3, 0.35);
+  function shade(hex, d, l) { return A3.shade(hex, d, l); }
+  pg.add(new T.BoxGeometry(8.4, 0.35, 8.4), stoneP, MX([0, PY + 0.17, 0]));
+  pg.add(new T.BoxGeometry(7.6, 0.3, 7.6), stoneP, MX([0, PY + 0.5, 0]));
+  pg.add(new T.BoxGeometry(5, 2.4, 5), cream, MX([0, PY + 1.85, 0]));
+  [[-2.5, -2.5], [2.5, -2.5], [-2.5, 2.5], [2.5, 2.5]].forEach(function (p) { pg.add(capsule(0.19, 2.3, 14, 4), redC, MX([p[0], PY + 1.85, p[1]])); });
+  [[0, 2.51, 0], [0, -2.51, Math.PI], [2.51, 0, Math.PI / 2], [-2.51, 0, -Math.PI / 2]].forEach(function (d) {
+    pg.add(new T.BoxGeometry(1.2, 1.7, 0.08), lin('#8A3A28'), MX([d[0], PY + 1.5, d[1]], [0, d[2], 0]));
+    pg.add(new T.BoxGeometry(1.36, 0.1, 0.12), lin('#E8B04A'), MX([d[0], PY + 2.38, d[1]], [0, d[2], 0]));
+  });
   function roof(w, h, y) {
-    var r = mesh(new T.ConeGeometry(w, h, 4, 1), red); r.rotation.y = Math.PI / 4; r.position.y = y; pag.add(r);
-    var e = w * 0.72;
-    [[e, e], [-e, e], [e, -e], [-e, -e]].forEach(function (p) {
-      var tip = mesh(new T.ConeGeometry(0.16, 0.7, 6), redD); tip.position.set(p[0], y - h / 2 + 0.25, p[1]);
-      tip.rotation.z = (p[0] > 0 ? -1 : 1) * 0.6; tip.rotation.x = (p[1] > 0 ? 1 : -1) * 0.6; pag.add(tip);
+    // mái bốn góc cong lõm, đuôi mái vểnh ở bốn góc
+    var g = lathe([[0.001, -0.14], [w + 0.08, -0.1], [w, 0.05], [w * 0.8, 0.16], [w * 0.52, h * 0.42], [w * 0.26, h * 0.78], [0.001, h]], 4);
+    g.rotateY(Math.PI / 4); pg.add(g, roofC, MX([0, y, 0]));
+    var e = w * 0.707;
+    [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(function (s) {
+      var ang = Math.atan2(s[0], s[1]);
+      var m = new T.Matrix4().makeTranslation(s[0] * e, y + 0.05, s[1] * e).multiply(new T.Matrix4().makeRotationY(ang)).multiply(new T.Matrix4().makeRotationX(0.95));
+      pg.add(A3.capsule(0.09, 0.55, 8, 3), roofD, m.multiply(new T.Matrix4().makeTranslation(0, 0.25, 0)));
     });
   }
-  roof(5.4, 1.7, 3.8);
-  var w2 = mesh(new T.BoxGeometry(3, 1.4, 3), cream); w2.position.y = 5.1; pag.add(w2);
-  roof(3.4, 1.3, 6.3);
-  var fin = mesh(sph(0.3), gold); fin.position.y = 7.15; pag.add(fin);
-  [[0, 2.53, 0], [0, -2.53, Math.PI], [2.53, 0, Math.PI / 2], [-2.53, 0, -Math.PI / 2]].forEach(function (d) {
-    var door = mesh(new T.BoxGeometry(1.2, 1.7, 0.1), M('#6E2E20', { emissive: 0xE9A24A, emissiveIntensity: 0.25 }));
-    door.position.set(d[0], 1.45, d[1]); door.rotation.y = d[2]; pag.add(door);
-  });
+  roof(4.0, 1.7, PY + 3.1);
+  pg.add(new T.BoxGeometry(3, 1.4, 3), cream, MX([0, PY + 4.6, 0]));
+  roof(2.6, 1.3, PY + 5.3);
+  pg.add(lathe([[0.001, 0], [0.32, 0], [0.28, 0.12], [0.12, 0.2], [0.2, 0.35], [0.06, 0.6], [0.15, 0.72], [0.001, 1.05]], 16), goldC, MX([0, PY + 6.5, 0]));
+  scene.add(pg.mesh(VC({ roughness: 0.8 }), true, true));
+  var lampM = VC({ roughness: 0.5, emissive: lin("#FF8A3A"), emissiveIntensity: 0.7 }), lp0 = new Parts();
   [[2.9, 2.9], [-2.9, 2.9], [2.9, -2.9], [-2.9, -2.9]].forEach(function (p) {
-    var lm = M('#E8642F', { emissive: 0xFF8A3A, emissiveIntensity: 0.9 }); var l = mesh(sph(0.32, 14, 10), lm, false); l.scale.y = 1.25; l.position.set(p[0], 2.6, p[1]); pag.add(l); PAG_LAMPS.push(lm);
+    lp0.add(sph(0.32, 16, 12), lin('#E8642F'), MX([p[0], PY + 2.4, p[1]], [0, 0, 0], [1, 1.25, 1]));
+    lp0.add(cyl(0.16, 0.16, 0.08, 10), lin('#9E4434'), MX([p[0], PY + 2.83, p[1]]));
   });
+  scene.add(lp0.mesh(lampM, false, false)); PAG_LAMPS.push(lampM);
 
-  var leafMats = [M('#7FAE7C'), M('#86B484'), M('#6FA36C'), M('#93BF86')], trunkM = M('#6E5A48');
-  function tree(x, z, s) {
-    var g = new T.Group(); g.position.set(x, 0, z); g.scale.setScalar(s);
-    var t = mesh(cyl(0.18, 0.26, 2), trunkM); t.position.y = 1; g.add(t);
-    for (var i = 0; i < 3; i++) { var f = mesh(sph(1 - i * 0.18, 12, 10), leafMats[(i + Math.floor(Math.abs(x))) & 3]); f.position.set((i - 1) * 0.35, 2.2 + i * 0.6, (i % 2) * 0.3); g.add(f); }
-    scene.add(g);
-  }
-  var i, a;
-  for (i = 0; i < 9; i++) { a = i / 9 * Math.PI * 2 + 0.3; tree(Math.cos(a) * 8.8, Math.sin(a) * 8.8, 1.1 + (i % 3) * 0.2); }
-  // cây vòng ngoài trồng xa lối đi để không che tầm nhìn
-  for (i = 0; i < 40; i++) { a = i / 40 * Math.PI * 2 + (i % 3) * 0.05; var rr = 36 + (i % 4) * 4; tree(Math.cos(a) * rr, Math.sin(a) * rr, 1.1 + (i % 5) * 0.2); }
-  var hm = [M('#B8CFC6'), M('#C9DAD2')];
-  for (i = 0; i < 14; i++) { a = i / 14 * Math.PI * 2; var hill = mesh(new T.ConeGeometry(18 + (i % 3) * 6, 14 + (i % 4) * 4, 8), hm[i % 2], false); hill.position.set(Math.cos(a) * 95, 4, Math.sin(a) * 95); scene.add(hill); }
-  var padM = M('#6FA864'), pinkM = M('#F4B6C8', { roughness: 0.6 });
-  for (i = 0; i < 34; i++) {
-    a = i * 2.399; var rp = R_IN + 1.5 + ((i * 37) % 90) / 90 * (R_OUT - R_IN - 3);
-    var pad = mesh(cyl(0.6, 0.6, 0.04, 16), padM, false); pad.position.set(Math.cos(a) * rp, -0.05, Math.sin(a) * rp); scene.add(pad);
-    if (i % 3 === 0) {
-      var fl = new T.Group(); fl.position.copy(pad.position); fl.position.y = -0.01;
-      for (var k = 0; k < 6; k++) { var pt = mesh(new T.ConeGeometry(0.1, 0.4, 6), pinkM, false); pt.position.set(Math.cos(k) * 0.1, 0.18, Math.sin(k) * 0.1); pt.rotation.z = Math.cos(k) * 0.5; pt.rotation.x = Math.sin(k) * 0.5; fl.add(pt); }
-      scene.add(fl);
+  /* ---- cây: tán tròn mượt nhiều khối, bóng giả nướng sẵn; cây bồ đề trên đảo ---- */
+  var trunks = new Parts(), leaves = new Parts();
+  var bark = lin('#8B7158'), barkD = lin('#6E5A48');
+  var greens = ['#8CC08A', '#7FB57E', '#98C890', '#86BA7C'].map(lin);
+  function canopyCol(base) { return shadeY(base, mixC(base, lin('#4E7F5A'), 0.55), mixC(base, lin('#E8F5C8'), 0.35)); }
+  function tree(x, y0, z, s, seed, res) {
+    var r = A3.rng(seed);
+    trunks.add(lathe([[0.2, 0], [0.16, 0.4], [0.13, 1.4], [0.1, 2.2], [0.001, 2.25]], 10), shadeY(bark, barkD, bark), MX([x, y0, z], null, s));
+    var base = greens[seed % 4], n = res > 12 ? 5 : 3;
+    for (var j = 0; j < n; j++) {
+      var aa = j / n * Math.PI * 2 + r(), d = j === 0 ? 0 : 0.55 + r() * 0.25, rr3 = j === 0 ? 1.05 : 0.72 + r() * 0.2;
+      leaves.add(new T.SphereGeometry(1, res, Math.round(res * 0.65)), canopyCol(base), MX([x + Math.cos(aa) * d * s, y0 + (2.3 + (j === 0 ? 0.55 : r() * 0.5)) * s, z + Math.sin(aa) * d * s], null, [rr3 * s, rr3 * 0.9 * s, rr3 * s]));
     }
   }
+  for (i = 1; i < 9; i++) { a = i / 9 * Math.PI * 2 + 0.3; tree(Math.cos(a) * 8.8, ISL_TOP, Math.sin(a) * 8.8, 1.25 + (i % 3) * 0.2, i + 11, 16); }
+  // cây vòng ngoài trồng xa lối đi để không che tầm nhìn
+  for (i = 0; i < 40; i++) { a = i / 40 * Math.PI * 2 + (i % 3) * 0.05; var ro = 36 + (i % 4) * 4; tree(Math.cos(a) * ro, 0, Math.sin(a) * ro, 1.3 + (i % 5) * 0.2, i + 40, 10); }
+  // bụi cây tròn có hoa ở ngoài lối đi
+  [0.15, 0.95, 1.7, 2.6, 3.35, 4.1, 4.9, 5.7].forEach(function (ba, kk) {
+    var x = Math.cos(ba) * 29.6, z = Math.sin(ba) * 29.6, sz = 0.7 + (kk % 3) * 0.15, base = greens[(kk + 1) % 4];
+    for (var j = 0; j < 3; j++) leaves.add(new T.SphereGeometry(1, 12, 8), canopyCol(base), MX([x + (j - 1) * sz * 0.8 * Math.sin(ba), sz * 0.55, z - (j - 1) * sz * 0.8 * Math.cos(ba)], null, [sz, sz * 0.85, sz]));
+    for (j = 0; j < 5; j++) leaves.add(new T.SphereGeometry(0.09, 6, 4), lin(kk % 2 ? '#F6B9CB' : '#FFF4E8'), MX([x + (rnd() - 0.5) * sz * 2, sz * (0.9 + rnd() * 0.4), z + (rnd() - 0.5) * sz * 2]));
+  });
+  (function bodhi() {
+    // cây bồ đề: gốc có bạnh, tán rộng, rễ phụ thõng xuống
+    var a0 = 0.3, x = Math.cos(a0) * 8.4, z = Math.sin(a0) * 8.4, s = 1.45, y0 = ISL_TOP, bk = A3.rng(91);
+    var tg = A3.folds(lathe([[1.15, 0], [0.75, 0.35], [0.58, 1.0], [0.52, 2.2], [0.56, 3.0], [0.3, 3.5], [0.001, 3.6]], 28), 9, function (y) { return 0.14 * (1 - sstep(0, 3.2, y)) + 0.05; });
+    trunks.add(tg, shadeY(bark, barkD, mixC(bark, lin('#FFFFFF'), 0.12)), MX([x, y0, z], null, s));
+    for (k = 0; k < 6; k++) {
+      var ang = k / 6 * Math.PI * 2 + 0.3;
+      var m = new T.Matrix4().makeTranslation(x, y0 + 3.0 * s, z).multiply(new T.Matrix4().makeRotationY(ang)).multiply(new T.Matrix4().makeRotationZ(-0.95)).multiply(new T.Matrix4().makeTranslation(0, 0.9 * s, 0)).multiply(new T.Matrix4().makeScale(s, s, s));
+      trunks.add(capsule(0.17, 1.8, 8, 3), bark, m);
+    }
+    for (k = 0; k < 10; k++) {
+      var ra = bk() * Math.PI * 2, d = (1.6 + bk() * 1.8) * s, len = (1.6 + bk() * 1.3) * s;
+      trunks.add(capsule(0.04, len, 5, 2), mixC(bark, lin('#BBA58A'), 0.4), MX([x + Math.cos(ra) * d, y0 + 4.2 * s - len / 2, z + Math.sin(ra) * d]));
+    }
+    var base = lin('#7DB27A'), blobs = [[0, 5.6, 0, 2.0]];
+    for (k = 0; k < 8; k++) { var b1 = k / 8 * Math.PI * 2; blobs.push([Math.cos(b1) * 2.7, 4.6 + bk() * 0.7, Math.sin(b1) * 2.4, 1.35 + bk() * 0.4]); }
+    for (k = 0; k < 4; k++) { var b2 = k / 4 * Math.PI * 2 + 0.6; blobs.push([Math.cos(b2) * 1.4, 6.0 + bk() * 0.5, Math.sin(b2) * 1.3, 1.25 + bk() * 0.3]); }
+    blobs.forEach(function (b, j) { leaves.add(new T.SphereGeometry(1, 16, 11), canopyCol(mixC(base, greens[j % 4], 0.4)), MX([x + b[0] * s, y0 + b[1] * s, z + b[2] * s], null, [b[3] * s, b[3] * 0.82 * s, b[3] * s])); });
+  })();
+  scene.add(trunks.mesh(VC({ roughness: 0.9 }), true, true));
+  scene.add(leaves.mesh(VC({ roughness: 0.85, envMapIntensity: 0.4 }), true, true));
+
+  /* ---- đèn đá ngoài lối đi, lõi đèn phát sáng ấm ---- */
+  var ls = new Parts(), lg = new Parts(), stone = lin('#D2C9B8');
+  var stC = shadeY(stone, mixC(stone, lin('#8F877A'), 0.45), mixC(stone, lin('#FFFFFF'), 0.25)), glowT = glowTex('rgba(255,200,130,0.9)');
+  [0.55, 1.6, 2.65, 3.7, 4.75, 5.8].forEach(function (la) {
+    var x = Math.cos(la) * 28.7, z = Math.sin(la) * 28.7, S2 = 1.7;
+    ls.add(lathe([[0.32, 0], [0.33, 0.06], [0.28, 0.12], [0.12, 0.16], [0.1, 0.7], [0.14, 0.74], [0.27, 0.78], [0.28, 0.84], [0.001, 0.85]], 16), stC, MX([x, 0, z], null, S2));
+    for (var p2 = 0; p2 < 4; p2++) { var pa = p2 / 4 * Math.PI * 2 + Math.PI / 4; ls.add(capsule(0.035, 0.26, 6, 2), stC, MX([x + Math.cos(pa) * 0.17 * S2, 1.0 * S2, z + Math.sin(pa) * 0.17 * S2], null, S2)); }
+    ls.add(lathe([[0.001, 0], [0.42, 0.0], [0.43, 0.04], [0.36, 0.1], [0.2, 0.2], [0.1, 0.3], [0.06, 0.36], [0.001, 0.37]], 16), stC, MX([x, 1.15 * S2, z], null, S2));
+    ls.add(new T.SphereGeometry(0.07, 10, 8), stC, MX([x, 1.56 * S2, z], null, S2));
+    lg.add(new T.SphereGeometry(0.15, 12, 10), lin('#FFD58A'), MX([x, 1.0 * S2, z], null, [S2, S2 * 1.25, S2]));
+    var spr = new T.Sprite(new T.SpriteMaterial({ map: glowT, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+    spr.position.set(x, 1.0 * S2, z); spr.scale.set(2.4, 2.4, 1); spr.visible = false; scene.add(spr); LANTERN_GLOWS.push(spr);
+  });
+  scene.add(ls.mesh(VC({ roughness: 0.92 }), true, true));
+  var lgM = VC({ roughness: 0.5, emissive: lin('#FFB760'), emissiveIntensity: 0.8 });
+  scene.add(lg.mesh(lgM, false, false)); PAG_LAMPS.push(lgM);
+
+  /* ---- cỏ và hoa nhỏ ngoài lối đi ---- */
+  var gr = new Parts(), tuftC = lin('#86BD72'), tuftF = shadeY(tuftC, mixC(tuftC, lin('#4F7F4A'), 0.4), mixC(tuftC, lin('#E7F4C2'), 0.3));
+  for (i = 0; i < 260; i++) {
+    var ga = rnd() * Math.PI * 2, gR = R_WALK + 1.4 + Math.pow(rnd(), 1.4) * 12, gx = Math.cos(ga) * gR, gz = Math.sin(ga) * gR;
+    for (var b3 = 0; b3 < 3; b3++) gr.add(new T.ConeGeometry(0.06, 0.45, 4), tuftF, MX([gx + (b3 - 1) * 0.07, 0.2, gz], [(b3 - 1) * 0.3, 0, (b3 - 1) * 0.35]));
+    if (i % 3 === 0) gr.add(new T.SphereGeometry(0.07, 6, 4), lin(['#FFFFFF', '#FFE08A', '#F7B8CC'][i % 3 === 0 ? (i / 3) % 3 : 0]), MX([gx + 0.15, 0.18, gz + 0.08]));
+  }
+  scene.add(gr.mesh(VC({ roughness: 0.9 }), false, true));
+
+  /* ---- đồi xa mềm (không nhận ánh sáng, chìm trong sương) ---- */
+  var hp = new Parts();
+  for (i = 0; i < 16; i++) { var ha = i / 16 * Math.PI * 2 + rnd() * 0.2, hR = 100 + rnd() * 14, hs = 16 + rnd() * 12; hp.add(new T.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), lin(i % 2 ? '#BCD5C8' : '#C9DCCF'), MX([Math.cos(ha) * hR, 0, Math.sin(ha) * hR], null, [hs * 1.6, hs * 0.55, hs])); }
+  scene.add(hp.mesh(new T.MeshBasicMaterial({ vertexColors: true, fog: true }), false, false));
+
+  /* ---- lá sen và hoa sen trên mặt nước ---- */
+  var lpd = new Parts(), lfl = new Parts(), padC = lin('#76AE68'), padE = lin('#9BCB84'), pink = lin('#F2A0BC'), white = lin('#FFF5F6');
+  for (i = 0; i < 34; i++) {
+    a = i * 2.399; var rp = R_IN + 1.5 + ((i * 37) % 90) / 90 * (R_OUT - R_IN - 3), px = Math.cos(a) * rp, pz = Math.sin(a) * rp, ps = 0.55 + (i % 4) * 0.12;
+    var pad = new T.CircleGeometry(1, 22, 0.22, Math.PI * 2 - 0.44); pad.rotateX(-Math.PI / 2);
+    var pp = pad.attributes.position; for (var q = 0; q < pp.count; q++) { var rq = Math.hypot(pp.getX(q), pp.getZ(q)); pp.setY(q, 0.1 * rq * rq); } pad.computeVertexNormals();
+    lpd.add(pad, function (l) { return mixC(padC, padE, sstep(0.2, 1, Math.hypot(l.x, l.z))); }, MX([px, WATER_Y + 0.045, pz], [0, rnd() * 6, 0], ps));
+    if (i % 3 === 0) {
+      var fy = WATER_Y + 0.1, fs = 1.6;
+      for (var layer = 0; layer < 2; layer++) {
+        var np = layer ? 6 : 8, tilt = layer ? 0.55 : 1.0, sz2 = (layer ? 0.75 : 1) * fs;
+        for (var k2 = 0; k2 < np; k2++) {
+          var ya = k2 / np * Math.PI * 2 + layer * 0.4, pet = new T.SphereGeometry(1, 8, 5); pet.translate(0, 0, 1);
+          var m3 = new T.Matrix4().makeTranslation(px, fy, pz).multiply(new T.Matrix4().makeRotationY(ya)).multiply(new T.Matrix4().makeRotationX(-tilt)).multiply(new T.Matrix4().makeScale(0.075 * sz2, 0.03 * sz2, 0.13 * sz2));
+          lfl.add(pet, function (l) { return mixC(white, pink, sstep(0.3, 1.9, l.z)); }, m3);
+        }
+      }
+      lfl.add(new T.SphereGeometry(0.06 * fs, 10, 6), lin('#F5CD52'), MX([px, fy + 0.06 * fs, pz], null, [1, 0.6, 1]));
+    }
+  }
+  WORLD.pads = lpd.mesh(VC({ roughness: 0.55, side: T.DoubleSide }), false, true); scene.add(WORLD.pads);
+  WORLD.lotus = lfl.mesh(VC({ roughness: 0.5 }), true, false); scene.add(WORLD.lotus);
+
+  scene.add(sp.mesh(VC({ roughness: 0.9 }), true, true));
 })();
+// gợn sóng: chỉ đổi độ cao các đỉnh nước (máy yếu cập nhật cách khung)
+var waterTick = 0;
+function updateWater(time) {
+  var W = WORLD; W.foam.material.opacity = 0.24 + 0.1 * Math.sin(time * 1.3);
+  W.pads.position.y = W.lotus.position.y = 0.008 * Math.sin(time * 0.9);
+  if (Q.low && (waterTick++ & 1)) return;
+  var wp = W.water.geometry.attributes.position, wb = W.waterBase, amp = W.waterAmp;
+  for (var i = 0; i < wp.count; i++) {
+    var x = wb[i * 3], y = wb[i * 3 + 1];
+    wp.array[i * 3 + 2] = (0.016 * Math.sin(x * 0.9 + time * 1.1) + 0.012 * Math.sin(y * 1.1 - time * 1.35) + 0.007 * Math.sin((x + y) * 2.0 + time * 2.1)) * amp[i];
+  }
+  wp.needsUpdate = true; W.water.geometry.computeVertexNormals();
+}
 
 /* ===================== Nhân vật chibi có khớp ===================== */
 // Dựng theo bản duyệt 3D: bàn tay 5 ngón, tay áo loe, mặt bám mặt cầu của đầu, tóc có mái riêng,
@@ -180,14 +369,6 @@ var blushM = new T.MeshBasicMaterial({ color: 0xF4A6B8, transparent: true, opaci
 var hatM = M('#E9D7A6'), hatD = M('#D6C08A'), beadM = M('#6E3A1E', { roughness: 0.5 }), ribbonM = M('#C9567A');
 var fanM = new T.MeshStandardMaterial({ color: '#E36A3B', roughness: 0.7, side: T.DoubleSide }), fanM2 = new T.MeshStandardMaterial({ color: '#CF5530', roughness: 0.7, side: T.DoubleSide });
 var fanEdge = M('#F2C14E'), stickM = M('#8A5A2B');
-function gradTex(stops) {
-  var c = document.createElement('canvas'); c.width = 2; c.height = 256; var x = c.getContext('2d'); var g = x.createLinearGradient(0, 0, 0, 256);
-  stops.forEach(function (s) { g.addColorStop(s[0], s[1]); }); x.fillStyle = g; x.fillRect(0, 0, 2, 256); return new T.CanvasTexture(c);
-}
-function glowTex(col) {
-  var c = document.createElement('canvas'); c.width = c.height = 128; var x = c.getContext('2d');
-  var g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, col); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); return new T.CanvasTexture(c);
-}
 function hairPart(head, pS, pL, tS, tL, r) { var m = mesh(new T.SphereGeometry(r || 0.565, 28, 12, pS, pL, tS, tL), hairM); head.add(m); return m; }
 var FRONT = Math.PI * 0.5;            // trên SphereGeometry, phi = π/2 hướng ra +z (phía mặt)
 function buildHair(head, k, hat) {
@@ -862,6 +1043,7 @@ function enterLake(title) {
   $('lakeName').textContent = S.hosting && S.hostIp ? title + ' · ' + S.hostIp : title;
   renderHUD(); renderCount();
   try { if (A) A.stopDiscovery(); } catch (e) { /* bỏ qua */ }
+  Q.startProbe();
   if (window.HAL && HAL.onEnter) HAL.onEnter();
 }
 function exitLake(msg) {
@@ -1189,7 +1371,7 @@ function stepChar(c, dt, idx) {
 }
 function frame() {
   var dt = Math.min(0.05, clock.getDelta()); time += dt;
-  WATER.color.setHSL(0.51, 0.33, 0.53 + 0.012 * Math.sin(time * 0.8));
+  updateWater(time);
   if (S.inLake && me) {
     var dir = walkDir || (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
     if (me.act === 'release' || me.act === 'pick') dir = 0;
@@ -1239,7 +1421,9 @@ function frame() {
     camera.position.set(Math.cos(ca) * 40, 16, Math.sin(ca) * 40); camera.lookAt(0, 2, 0);
     sun.position.set(-40, 48, 30); sun.target.position.set(0, 0, 0);
   }
-  if (VIEW === 'hall') { moUpdate(dt); renderer.render(hall, camera); }
+  if (VIEW === 'hall') moUpdate(dt);
+  if (A3.DBG && HAL.dbg && HAL.dbg.frameCam) HAL.dbg.frameCam(camera, me, dt);
+  if (VIEW === 'hall') renderer.render(hall, camera);
   else if (VIEW === 'zen') { if (S.inLake || ZEN.ch) { HAL.zenText = zenUpdate(dt); } renderer.render(scene, camera); }
   else if (!(window.HAL && HAL.covered)) renderer.render(scene, camera);
 
@@ -1267,6 +1451,8 @@ function frame() {
     }
     if (me.act === null && $('go').disabled && !S.returning && (S.turns > 0 || S.phuoc >= 100)) renderHUD();
   }
+  if (S.inLake) Q.tick(dt);
+  A3.debugTick(renderer);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -1309,5 +1495,12 @@ window.HAL = {
   mo: { strike: moStrike, screen: moScreen, run: function (b) { MO.run = !!b; } },
   zenText: 'Hít vào',
   covered: false
+};
+// móc kiểm thử (chỉ khi bật ?debug): điều khiển nhân vật, thả cá, xem cảnh từ trình duyệt
+if (A3.DBG) HAL.dbg = {
+  T: T, scene: scene, camera: camera, renderer: renderer, sun: sun, me: function () { return me; }, remotes: remotes, trash: trash,
+  act: function (n) { if (n === 'throw' || n === 'release') $('go').click(); else if (n === 'pick') { var k = Object.keys(trash)[0]; if (k !== undefined) { act(me, 'pick'); send({ t: 'act', n: 'pick' }); if (Net.isHost) hostPick(+k, Net.id); } } else myAct(n); },
+  chibi: chibi, makeFish: makeFish, setPose: setPose, base: base, pose: pose, P_zen: P_zen, prayArms: prayArms, PRAY: PRAY, fish: function () { return S.fish; },
+  frameCam: null
 };
 })();
