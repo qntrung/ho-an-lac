@@ -964,15 +964,15 @@ function updateFish(dt) {
   updateDrops(dt);
 }
 
-/* ---- cá hóa thân: thỉnh thoảng cá tạ ơn được tiễn đi sẽ bay lên, lóe sáng rồi hóa thành hoa sen, chim hạc hoặc đàn bướm.
- * Chỉ hiện trên máy người thả (không đổi tin nhắn mạng); ngày rằm và mùng 1 tỉ lệ cao hơn. Thử: ?hoathan hoặc ?hoathan=sen|hac|buom */
+/* ---- cá hóa thân: thỉnh thoảng cá tạ ơn được tiễn đi sẽ bay lên, lóe sáng rồi hóa thành hoa sen, chim hạc hoặc rồng bay lên trời.
+ * Chỉ hiện trên máy người thả (không đổi tin nhắn mạng); ngày rằm và mùng 1 tỉ lệ cao hơn. Thử: ?hoathan hoặc ?hoathan=sen|hac|rong */
 var HOA_THAN = (/[?&]hoathan(=([a-z]+))?/.exec(location.search) || null);
-var FORM_NAME = { sen: 'hoa sen', hac: 'chim hạc', buom: 'đàn bướm' };
+var FORM_NAME = { sen: 'hoa sen', hac: 'chim hạc', rong: 'rồng bay lên trời' };
 // tuổi trăng theo giờ Việt Nam (ngày): gần 0 là mùng 1, khoảng 14 là rằm
 function moonAge() { var jd = Date.now() / 86400000 + 2440587.5 + 7 / 24, P = 29.530588853; return ((jd - 2451550.1) % P + P) % P; }
 function isRamMung1() { var a = moonAge(); return a < 1.2 || a > 28.4 || Math.abs(a - 14.2) < 1.2; }
 function hoaThanChance() { return HOA_THAN ? 1 : isRamMung1() ? 0.5 : 0.25; }
-function pickForm() { var f = HOA_THAN && HOA_THAN[2]; return FORM_NAME[f] ? f : ['sen', 'hac', 'buom'][Math.floor(Math.random() * 3)]; }
+function pickForm() { var f = HOA_THAN && HOA_THAN[2]; return FORM_NAME[f] ? f : ['sen', 'hac', 'rong'][Math.floor(Math.random() * 3)]; }
 var MORPH_GLOW = glowTex('rgba(255,236,170,1)'); MORPH_GLOW.userData = { shared: true };
 function makeCrane() {
   // chim hạc trắng: thân thon, cổ cong, mào đỏ, mỏ vàng xám, đuôi đen; hai cánh là nhóm riêng để vỗ
@@ -995,21 +995,62 @@ function makeCrane() {
   });
   g.userData.mat = mat; return g;
 }
-function makeButterflies() {
-  var g = new T.Group(), cols = ['#F38FB1', '#FFD04A', '#7FC6EE', '#B98FEA', '#8FD9A8'], mat = VC({ roughness: 0.6, side: T.DoubleSide, transparent: true });
-  var w = new T.Shape(); w.moveTo(0, 0); w.bezierCurveTo(0.08, 0.12, 0.2, 0.14, 0.2, 0.04); w.bezierCurveTo(0.2, -0.04, 0.12, -0.06, 0.08, -0.04); w.bezierCurveTo(0.14, -0.1, 0.1, -0.16, 0.04, -0.12); w.lineTo(0, 0);
-  var wg = new T.ShapeGeometry(w, 8); wg.rotateX(-Math.PI / 2);
-  g.userData.bs = cols.map(function (hex, i) {
-    var b = new T.Group(), col = lin(hex);
-    var bp = new Parts(); bp.add(A3.capsule(0.012, 0.08, 6, 2), lin('#4A3F3A'), MX(null, [Math.PI / 2, 0, 0])); b.add(bp.mesh(mat, false, false));
-    var ws = [-1, 1].map(function (s) {
-      var wp = new Parts(); wp.add(wg, function (l) { return mixC(mixC(col, lin('#FFFFFF'), 0.45), col, sstep(0.02, 0.12, Math.abs(l.x))); }, MX(null, null, [s, 1, 1]));
-      var piv = new T.Group(); piv.add(wp.mesh(mat, false, false)); b.add(piv); return piv;
-    });
-    b.scale.setScalar(1.3); g.add(b);
-    return { g: b, w: ws, a: i / cols.length * Math.PI * 2, r: 0.3 + Math.random() * 0.4, ph: Math.random() * 6, sp: 0.8 + Math.random() * 0.5 };
+// rồng (cá chép hóa rồng): thân nhiều đốt nối theo đường bay, vây lưng đỏ, đầu có sừng, râu dài, bờm; hai cặp chân
+var DRAGON_N = 44;
+function makeDragon() {
+  var g = new T.Group(), mats = [];
+  function tm(o) { var m = new T.MeshStandardMaterial(Object.assign({ roughness: 0.4, metalness: 0.3, envMapIntensity: 0.9, transparent: true }, o)); mats.push(m); return m; }
+  var body = new T.InstancedMesh(new T.SphereGeometry(1, 12, 9), tm({ color: 0xFFFFFF }), DRAGON_N);
+  var spikes = new T.InstancedMesh(new T.ConeGeometry(0.5, 1, 6), tm({ color: lin('#E0503A') }), DRAGON_N);
+  var gold = lin('#E8B04A'), goldL = lin('#FFE08A');
+  for (var i = 0; i < DRAGON_N; i++) body.setColorAt(i, i % 3 === 0 ? goldL : gold);
+  body.castShadow = spikes.castShadow = true; body.frustumCulled = spikes.frustumCulled = false;
+  g.add(body); g.add(spikes);
+  // đầu rồng dựng dọc trục +z
+  var hp = new Parts(), mat = VC({ roughness: 0.4, metalness: 0.25, envMapIntensity: 0.9, side: T.DoubleSide, transparent: true }); mats.push(mat);
+  var gS = A3.shade('#E8B04A', 0.35, 0.35), red = lin('#E0503A'), cream = lin('#FFF1C8');
+  hp.add(new T.SphereGeometry(0.24, 16, 12), gS, MX([0, 0, 0], null, [1, 0.9, 1.1]));
+  hp.add(A3.capsule(0.13, 0.22, 14, 4), gS, MX([0, -0.03, 0.26], [Math.PI / 2, 0, 0], [1.1, 1, 0.8]));
+  hp.add(A3.capsule(0.1, 0.18, 12, 3), cream, MX([0, -0.12, 0.22], [Math.PI / 2 + 0.25, 0, 0], [1, 1, 0.5]));
+  [-1, 1].forEach(function (s) {
+    hp.add(new T.SphereGeometry(0.06, 12, 9), lin('#FFFFFF'), MX([0.13 * s, 0.08, 0.14]));
+    hp.add(new T.SphereGeometry(0.035, 10, 8), lin('#1A1210'), MX([0.15 * s, 0.09, 0.17]));
+    hp.add(new T.SphereGeometry(0.012, 6, 5), lin('#FFFFFF'), MX([0.16 * s, 0.105, 0.195]));
+    hp.add(A3.capsule(0.025, 0.32, 8, 2), lin('#C98A3A'), MX([0.1 * s, 0.24, -0.12], [-0.9, 0, -0.35 * s]));          // sừng
+    hp.add(A3.capsule(0.018, 0.12, 6, 2), lin('#C98A3A'), MX([0.17 * s, 0.31, -0.1], [-0.4, 0, -1.0 * s]));
+    hp.add(A3.capsule(0.01, 0.6, 5, 2), cream, MX([0.12 * s, -0.04, 0.46], [1.2, 0, 0.9 * s]).multiply(new T.Matrix4().makeTranslation(0, -0.3, 0)));   // râu
+    for (var k = 0; k < 4; k++) hp.add(new T.ConeGeometry(0.05, 0.22, 6), red, MX([0.19 * s, 0.02 - k * 0.05, -0.12 - k * 0.04], [-1.2, 0, -1.1 * s]));  // bờm
   });
-  g.userData.mat = mat; return g;
+  hp.add(new T.SphereGeometry(0.035, 8, 6), red, MX([0, 0.02, 0.5]));
+  var head = hp.mesh(mat, true, false); g.add(head);
+  // chân: bắp chân + ba móng
+  var lp = new Parts();
+  lp.add(A3.capsule(0.045, 0.22, 8, 2), gS, MX([0, -0.15, 0]));
+  for (var c = -1; c <= 1; c++) lp.add(A3.capsule(0.018, 0.06, 6, 2), cream, MX([c * 0.035, -0.32, 0.03], [0.6, 0, c * 0.3]));
+  var lgeo = lp.geometry(), legs = [];
+  for (var j = 0; j < 4; j++) { var lm = new T.Mesh(lgeo, mat); lm.castShadow = true; g.add(lm); legs.push(lm); }
+  g.userData.dragon = { body: body, spikes: spikes, head: head, legs: legs };
+  g.userData.mats = mats; return g;
+}
+var _dp = new T.Vector3(), _dq = new T.Vector3(), _dmx = new T.Matrix4(), _dqt = new T.Quaternion(), _dup = new T.Vector3(0, 1, 0), _dsc = new T.Vector3();
+// đường bay xoắn lên trời, thân uốn lượn
+function dragonPath(c, t, out) { var a = t * 1.5, r = 1.1 + t * 0.35; return out.set(c.x + Math.cos(a) * r, c.y + t * 1.45 + 0.3 * Math.sin(t * 5), c.z + Math.sin(a) * r); }
+function updateDragon(g, c, ft) {
+  var D = g.userData.dragon, grow = Math.min(1, ft / 0.5) * 1.35;
+  for (var i = 0; i < DRAGON_N; i++) {
+    var t = ft - i * 0.038 * (1 - i / DRAGON_N * 0.55), rad = (0.17 * (1 - i / DRAGON_N * 0.8) + 0.04 * Math.exp(-i * 0.4)) * grow;
+    if (t < 0) { _dmx.makeScale(0, 0, 0); D.body.setMatrixAt(i, _dmx); D.spikes.setMatrixAt(i, _dmx); continue; }
+    dragonPath(c, t, _dp);
+    _dmx.makeScale(rad, rad, rad).setPosition(_dp); D.body.setMatrixAt(i, _dmx);
+    _dmx.compose(_dq.copy(_dp).addScaledVector(_dup, rad * 0.95), _dqt.identity(), _dsc.set(rad * 0.7, rad * 1.1, rad * 0.7)); D.spikes.setMatrixAt(i, _dmx);
+    if (i === 7 || i === 8 || i === 24 || i === 25) {
+      var lg = D.legs[[7, 8, 24, 25].indexOf(i)], sd = i % 2 ? 1 : -1;
+      dragonPath(c, t + 0.02, _dq); lg.position.copy(_dp); lg.lookAt(_dq); lg.rotateZ(sd * 0.6); lg.scale.setScalar(grow * (1 - i / DRAGON_N * 0.5));
+    }
+  }
+  D.body.instanceMatrix.needsUpdate = true; D.spikes.instanceMatrix.needsUpdate = true;
+  dragonPath(c, ft, _dp); dragonPath(c, ft + 0.02, _dq);
+  D.head.position.copy(_dp); D.head.lookAt(_dq); D.head.scale.setScalar(grow);
 }
 function makeLotusBloom() {
   var g = new T.Group(), pp = new Parts(), mat = VC({ roughness: 0.5, side: T.DoubleSide, transparent: true });
@@ -1038,12 +1079,12 @@ function morphUpdate(F, dt) {
   o.visible = false;
   var ft = t - 1.4, p = new T.Vector3(mo.p0.x, FISH_Y + 1.4, mo.p0.z);
   if (!mo.g) {
-    mo.g = mo.form === 'hac' ? makeCrane() : mo.form === 'buom' ? makeButterflies() : makeLotusBloom();
+    mo.g = mo.form === 'hac' ? makeCrane() : mo.form === 'rong' ? makeDragon() : makeLotusBloom();
     scene.add(mo.g);
   }
   var g = mo.g, fadeK = 1 - seg(ft, 4.6, 5.8);
   gl2.position.copy(p); gl2.scale.setScalar(4 * (1 - seg(ft, 0, 0.8)) + 0.01); gl2.material.opacity = 1 - seg(ft, 0, 0.8);
-  g.userData.mat.opacity = fadeK;
+  (g.userData.mats || [g.userData.mat]).forEach(function (m) { m.opacity = fadeK; });
   if (mo.form === 'sen') {
     // hoa sen hạ xuống mặt nước rồi nở to, xoay chậm
     var dn = ease(ft / 0.9);
@@ -1057,14 +1098,9 @@ function morphUpdate(F, dt) {
     g.rotation.set(-0.15, Math.atan2(-Math.sin(a), Math.cos(a)), 0.3); g.scale.setScalar(Math.min(1, ft / 0.4) * 1.3);
     var fl = Math.sin(ft * 9) * 0.7; g.userData.wings[0].rotation.z = -fl; g.userData.wings[1].rotation.z = fl;
   } else {
-    // đàn bướm tỏa ra rồi bay lên
-    g.position.copy(p);
-    g.userData.bs.forEach(function (b) {
-      var aa = b.a + ft * 0.9 * b.sp, rr = b.r + ft * 0.55;
-      b.g.position.set(Math.cos(aa) * rr, ft * 0.7 * b.sp + 0.15 * Math.sin(ft * 3 + b.ph), Math.sin(aa) * rr);
-      b.g.rotation.y = -aa; var fw = Math.sin(ft * 16 + b.ph) * 0.9; b.w[0].rotation.z = fw; b.w[1].rotation.z = -fw;
-      b.g.scale.setScalar(1.3 * Math.min(1, ft / 0.4));
-    });
+    // rồng hiện ra từ ánh sáng, uốn mình xoắn bay lên trời phía giữa hồ
+    var hy = Math.hypot(p.x, p.z);
+    updateDragon(g, new T.Vector3(p.x - p.x / hy * 1.4, p.y - 0.4, p.z - p.z / hy * 1.4), ft);
   }
   return ft > 5.8;
 }

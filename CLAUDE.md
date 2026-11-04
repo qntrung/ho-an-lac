@@ -16,7 +16,7 @@ Current stage: a test build for friends. Priority is better visuals without brea
 - URL flags for testing (also usable in the Android WebView via `localStorage`):
   - `?debug` or `localStorage hal_debug = true`: fps / draw call / triangle meter, plus test hooks on `HAL.dbg` (`act('pray')`, `me()`, `frameCam`, `makeFish`, ...).
   - `?low` (turn off with `?low=0`) or `localStorage hal_low = true`: low-quality mode. It also switches on by itself if fps stays under 40 for the first 4 seconds in the lake, and is remembered.
-  - `?hoathan` or `?hoathan=sen|hac|buom`: every thanked fish transforms (lotus, crane, butterflies) when sent off.
+  - `?hoathan` or `?hoathan=sen|hac|rong`: every thanked fish transforms (lotus, crane, dragon) when sent off.
 - There are no tests and no linter. Check JS syntax with `node --check <file>`.
 
 ## Architecture
@@ -56,7 +56,7 @@ Who counts as host depends on the server:
 - Actions: local names `release`, `pick`, `pray`, `bow`, `niem` (`ACT_LEN`). Over the network fish release is sent as `act` with `n: 'throw'`.
 - Fish release flow is a state machine in `updateFish` (`held → drop → away → swim → return → circle → leave/fade`). The "fish comes back to thank you" case circles the release spot until the player says A Di Đà Phật (`releaseCircling`).
 - Fish: each species has a shape entry in `FISH_SHAPE`. Fish materials are transparent with `renderOrder` after the water, so they are drawn on top of the water surface and only tinted by depth (`fishTint`); drawing them under the semi-transparent water made them look washed out.
-- Fish transformation (cá hóa thân): when the owner sends off a thanking fish, it sometimes turns into a lotus, crane or butterflies (higher chance on rằm / mùng 1, estimated from moon age) and `stats[fish].tf` goes up. It is shown only on the owner's device because no network message may change.
+- Fish transformation (cá hóa thân): when the owner sends off a thanking fish, it sometimes turns into a lotus, a crane or a dragon flying up to the sky (higher chance on rằm / mùng 1, estimated from moon age) and `stats[fish].tf` goes up. It is shown only on the owner's device because no network message may change.
 
 ### Persistence
 
