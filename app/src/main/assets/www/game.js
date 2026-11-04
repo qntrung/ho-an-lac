@@ -370,7 +370,7 @@ var CH_MAT = shared(VC({ roughness: 0.72, envMapIntensity: 0.45, skinning: true 
 var CH_GLOSS = shared(VC({ roughness: 0.38, envMapIntensity: 0.8, skinning: true }));
 var ITEM_MAT = shared(VC({ roughness: 0.62, side: T.DoubleSide }));
 var ITEM_GLOW = shared(VC({ roughness: 0.5, emissive: lin('#FF8A3A'), emissiveIntensity: 1.0 }));
-var eyeM = shared(M('#1E1410')), stickM = shared(M('#8A5A2B'));
+var stickM = shared(M('#8A5A2B'));
 var CC = {
   skin: lin('#F7D5B5'), skinD: lin('#E8B994'), hair: lin('#3A2E2A'), hairL: lin('#5E4A40'), pants: lin('#EFE9DC'), shoe: lin('#4A3F3A'),
   collar: lin('#F6F1E8'), blush: lin('#F7AFAE'), mouth: lin('#B5605A'), eye: lin('#140D0A'), eyeB: lin('#5A3A2C'), white: lin('#FFFFFF'),
@@ -770,45 +770,141 @@ function faceWater(c, dt) { faceTo(c, -Math.cos(c.angle), -Math.sin(c.angle), dt
 function faceWalk(c, dt) { faceTo(c, Math.sin(c.angle) * c.dirSign, -Math.cos(c.angle) * c.dirSign, dt); }
 
 /* ===================== Cá ===================== */
+// Mỗi loài một dáng: chép thân thon đuôi chẻ có râu ngắn, cá vàng thân tròn đuôi voan, rô thân chắc vây lưng gai,
+// trê đầu bẹt râu dài, diêu hồng thân cao, koi có mảng màu, cá rồng thân dài vảy lớn óng ánh.
+// Cả con cá là một mesh màu đỉnh; thân uốn bằng CPU (A3.bendFish) nên đuôi quẫy mềm.
+var FISH_SHAPE = {
+  chepdo: { L: 1, H: 1, W: 1, tail: 'fork', barb: 2 },
+  chepvang: { L: 1, H: 1, W: 1, tail: 'fork', barb: 2 },
+  cavang: { L: 0.8, H: 1.3, W: 1.15, tail: 'veil' },
+  ro: { L: 0.9, H: 1.15, W: 0.95, tail: 'round', spiny: true, band: true },
+  tre: { L: 1.15, H: 0.78, W: 1.08, tail: 'round', barb: 4, flat: true, mottle: true },
+  dieuhong: { L: 0.95, H: 1.35, W: 0.85, tail: 'fork' },
+  kohaku: { L: 1.05, H: 0.95, W: 1, tail: 'fork', barb: 2, blobs: [[0.2, 0.0, 0.085], [0.02, 0.035, 0.1], [-0.17, -0.025, 0.07]] },
+  showa: { L: 1.05, H: 0.95, W: 1, tail: 'fork', barb: 2, blobs: [[0.21, 0.02, 0.07], [-0.02, -0.04, 0.085], [-0.2, 0.03, 0.06]], white: [[0.08, 0.06, 0.06], [-0.12, -0.05, 0.05]] },
+  carong: { L: 1.3, H: 0.85, W: 0.72, tail: 'fan', barb: 2, scales: true, rearFin: true }
+};
+var FISH_SCALE = 1.25;                 // cá dựng theo đơn vị bản tham chiếu, phóng to cho hợp nhân vật
+var FISH_TINT = lin('#BFE3DA'), WHITE = new T.Color(1, 1, 1);
+function satC(hex, k) { var c = lin(hex), h = {}; c.getHSL(h); c.setHSL(h.h, Math.min(1, h.s * (1 + k)), h.l); return c; }
 function makeFish(fk) {
-  var sp = fishOf(fk);
-  var g = new T.Group(); var m = M(sp.body, { roughness: 0.45 });
-  var b = mesh(sph(0.2, 16, 12), m); b.scale.set(0.55, 0.7, 1.6); g.add(b);
-  var belly = mesh(sph(0.16, 12, 10), M(sp.belly)); belly.scale.set(0.5, 0.45, 1.4); belly.position.y = -0.06; g.add(belly);
-  if (sp.spot) { var spot = mesh(sph(0.1, 10, 8), M(sp.spot), false); spot.scale.set(0.9, 0.5, 1.4); spot.position.set(0, 0.1, 0.05); g.add(spot); }
-  if (sp.whisk) { [-1, 1].forEach(function (s2) { var wk = mesh(cyl(0.008, 0.004, 0.22, 4), M(sp.fin), false); wk.position.set(0.06 * s2, -0.02, 0.36); wk.rotation.x = 1.2; wk.rotation.z = 0.5 * s2; g.add(wk); }); }
-  var tailG = new T.Group(); tailG.position.z = -0.3; g.add(tailG);
-  var tail = mesh(new T.ConeGeometry(0.18, 0.32, 4), M(sp.fin, { transparent: true, opacity: 0.9 })); tail.rotation.x = Math.PI / 2; tail.scale.set(0.25, 1, 1); tail.position.z = -0.12; tailG.add(tail);
-  var fin = mesh(new T.ConeGeometry(0.08, 0.22, 4), M(sp.fin)); fin.position.set(0, 0.14, 0.02); fin.scale.set(0.3, 1, 1.6); g.add(fin);
-  [-1, 1].forEach(function (s) { var e = mesh(sph(0.025, 8, 6), eyeM, false); e.position.set(0.09 * s, 0.04, 0.26); g.add(e); });
-  g.userData.tail = tailG; return g;
+  var sp = fishOf(fk), sh = FISH_SHAPE[sp.k] || FISH_SHAPE.chepdo, pp = new Parts(), i;
+  // màu đậm hơn bảng gốc một chút để dưới nước không bị nhạt
+  var body = satC(sp.body, 0.18), top = mixC(body, lin('#24160E'), 0.2), belly = lin(sp.belly), fin = mixC(satC(sp.fin, 0.12), WHITE, 0.18);
+  var spot = sp.spot ? satC(sp.spot, 0.12) : null, white = lin('#FFF8F0');
+  var pts = [];
+  for (i = 0; i <= 24; i++) { var u = i / 24, r = 0.13 * Math.pow(Math.sin(Math.PI * Math.pow(u, sh.flat ? 1.15 : 1.36)), 0.7); pts.push([r, -0.35 + 0.7 * u]); }
+  var bg = A3.lathe(pts, 20); bg.rotateX(Math.PI / 2); bg.scale(0.9 * sh.W, 0.74 * sh.H, sh.L);
+  if (sh.flat) {   // trê: đầu bẹt và rộng
+    var bp = bg.attributes.position;
+    for (i = 0; i < bp.count; i++) { var z = bp.getZ(i), k = sstep(0.05, 0.38, z); bp.setXYZ(i, bp.getX(i) * (1 + 0.25 * k), bp.getY(i) * (1 - 0.3 * k), z); }
+    bg.computeVertexNormals();
+  }
+  var Lz = sh.L;
+  pp.add(bg, function (l, w, n) {
+    var c = mixC(top, body, sstep(0.9, 0.2, n.y));
+    c = mixC(c, belly, sstep(0.0, -0.6, n.y));
+    if (sh.band && n.y > -0.3 && Math.sin(l.z / Lz * 38) > 0.55) c = mixC(c, top, 0.45);
+    if (sh.mottle && n.y > -0.2) c = mixC(c, lin('#1E1A18'), 0.35 * sstep(0.3, 0.9, Math.sin(l.z * 31) * Math.sin(l.x * 47 + l.z * 9)));
+    if (sh.scales) {   // vảy lớn xếp lệch hàng: viền vảy tối, giữa vảy sáng óng
+      var a = Math.atan2(l.y, l.x), row = Math.floor(a * 3.2), fz = (l.z / Lz * 15 + (row % 2) * 0.5) % 1, fa = (a * 3.2) % 1;
+      var e = Math.min(Math.abs(fz - 0.5), Math.abs(fa - 0.5) * 0.7);
+      c = mixC(c, mixC(c, WHITE, 0.35), sstep(0.35, 0.15, e)); c = mixC(c, top, sstep(0.42, 0.5, Math.max(Math.abs(fz - 0.5), Math.abs(fa - 0.5))) * 0.5);
+    }
+    if (sh.white && n.y > -0.4) sh.white.forEach(function (b) { var d = Math.hypot(l.z - b[0] * Lz, l.x - b[1]); if (d < b[2]) c = mixC(c, white, sstep(b[2], b[2] * 0.7, d)); });
+    if (spot && sh.blobs && n.y > -0.25) sh.blobs.forEach(function (b) { var d = Math.hypot(l.z - b[0] * Lz, l.x - b[1]); if (d < b[2]) c = mixC(c, spot, sstep(b[2], b[2] * 0.7, d) * sstep(-0.25, 0.1, n.y)); });
+    return c;
+  });
+  var finCol = function () { return fin; }, tz = -0.3 * Lz;
+  // đuôi (nằm ngang để nhìn từ trên xuống vẫn rõ dáng cá)
+  var tail = new T.Shape();
+  if (sh.tail === 'fork') { tail.moveTo(0, 0); tail.bezierCurveTo(0.08, 0.05, 0.22, 0.14, 0.24, 0.3); tail.quadraticCurveTo(0.1, 0.22, 0, 0.19); tail.quadraticCurveTo(-0.1, 0.22, -0.24, 0.3); tail.bezierCurveTo(-0.22, 0.14, -0.08, 0.05, 0, 0); }
+  else if (sh.tail === 'veil') { tail.moveTo(0, 0); tail.bezierCurveTo(0.14, 0.06, 0.34, 0.2, 0.3, 0.46); tail.quadraticCurveTo(0.18, 0.36, 0.1, 0.44); tail.quadraticCurveTo(0, 0.3, -0.1, 0.44); tail.quadraticCurveTo(-0.18, 0.36, -0.3, 0.46); tail.bezierCurveTo(-0.34, 0.2, -0.14, 0.06, 0, 0); }
+  else if (sh.tail === 'fan') { tail.moveTo(0, 0); tail.bezierCurveTo(0.12, 0.04, 0.24, 0.16, 0.2, 0.32); tail.quadraticCurveTo(0, 0.4, -0.2, 0.32); tail.bezierCurveTo(-0.24, 0.16, -0.12, 0.04, 0, 0); }
+  else { tail.moveTo(0, 0); tail.bezierCurveTo(0.1, 0.03, 0.17, 0.12, 0.15, 0.22); tail.quadraticCurveTo(0, 0.3, -0.15, 0.22); tail.bezierCurveTo(-0.17, 0.12, -0.1, 0.03, 0, 0); }
+  var tg = new T.ShapeGeometry(tail, 12); tg.rotateX(-Math.PI / 2); tg.translate(0, 0, tz);
+  var tailTip = sp.k === 'kohaku' ? white : mixC(body, fin, 0.5);
+  pp.add(tg, function (l) { return mixC(fin, tailTip, sstep(0.1, 0.35, Math.hypot(l.x, l.z - tz))); });
+  // vây lưng: thường / gai (rô) / lùi về sau kèm vây hậu môn (cá rồng)
+  var dor = new T.Shape();
+  if (sh.spiny) { dor.moveTo(0.12, 0); for (var s2 = 0; s2 < 6; s2++) { var x0 = 0.12 - s2 * 0.05; dor.lineTo(x0 - 0.012, 0.1 - s2 * 0.006); dor.lineTo(x0 - 0.05, 0.05); } dor.lineTo(-0.19, 0); dor.lineTo(0.12, 0); }
+  else if (sh.rearFin) { dor.moveTo(-0.02, 0); dor.quadraticCurveTo(-0.08, 0.09, -0.24, 0.07); dor.lineTo(-0.27, 0); dor.lineTo(-0.02, 0); }
+  else { dor.moveTo(0.12, 0); dor.quadraticCurveTo(0.04, 0.09, -0.13, 0.075); dor.quadraticCurveTo(-0.15, 0.03, -0.19, 0); dor.lineTo(0.12, 0); }
+  var dg = new T.ShapeGeometry(dor, 8); dg.rotateY(-Math.PI / 2); dg.scale(1, sh.H, Lz); dg.translate(0, 0.07 * sh.H, 0);
+  pp.add(dg, finCol);
+  if (sh.rearFin) { var ag = new T.ShapeGeometry(dor, 8); ag.rotateY(-Math.PI / 2); ag.rotateZ(Math.PI); ag.scale(1, sh.H, Lz); ag.translate(0, -0.06 * sh.H, 0); pp.add(ag, finCol); }
+  [-1, 1].forEach(function (sd) {
+    var pf = new T.CircleGeometry(0.075, 14); pf.rotateX(-Math.PI / 2); pf.scale(1, 1, 0.55);
+    pp.add(pf, finCol, MX([0.1 * sd * sh.W, -0.035, 0.13 * Lz], [0.25, 0.7 * sd, -0.35 * sd]));
+    // mắt to kiểu chibi, có điểm sáng
+    var ez = 0.25 * Lz, ex = 0.072 * sh.W * (sh.flat ? 1.15 : 1);
+    pp.add(new T.SphereGeometry(0.026, 12, 9), lin('#1A1210'), MX([ex * sd, 0.024 * sh.H, ez]));
+    pp.add(new T.SphereGeometry(0.009, 8, 6), WHITE, MX([(ex + 0.016) * sd, 0.036 * sh.H, ez + 0.012]));
+  });
+  if (sh.barb) {   // râu: chép/koi 2 sợi ngắn, trê 4 sợi dài, cá rồng 2 sợi chĩa lên dưới cằm
+    var bl = sh.barb === 4 ? 0.24 : 0.07, bc = mixC(fin, top, 0.3);
+    for (i = 0; i < sh.barb; i++) {
+      var sd2 = i % 2 ? 1 : -1, row2 = i < 2 ? 0 : 1;
+      var bz = 0.33 * Lz, rot = sp.k === 'carong' ? [-0.6, 0, 0.2 * sd2] : [1.0 + row2 * 0.3, 0.35 * sd2, 0.5 * sd2 + row2 * 0.5 * sd2];
+      pp.add(A3.capsule(0.006, bl, 5, 2), bc, MX([0.035 * sd2 * sh.W, -0.02, bz], rot).multiply(new T.Matrix4().makeTranslation(0, -bl / 2, 0)));
+    }
+  }
+  var geo = pp.geometry();
+  var m = new T.Mesh(geo, VC({ roughness: 0.38, metalness: sh.scales ? 0.25 : 0.05, envMapIntensity: 0.9, side: T.DoubleSide, transparent: true, opacity: 1 }));
+  m.castShadow = false; m.receiveShadow = false; m.renderOrder = 12;      // vẽ sau mặt nước: cá rõ màu, chỉ phủ nhẹ màu nước khi lặn
+  m.scale.setScalar(FISH_SCALE);
+  m.userData.base = Float32Array.from(geo.attributes.position.array);
+  return m;
 }
+// phủ nhẹ màu nước theo độ sâu (thay cho việc nhìn cá qua lớp nước mờ làm cá nhạt màu)
+function fishTint(o) { var k = A3.clamp((WATER_Y - o.position.y) / 0.35, 0, 1); o.material.color.copy(WHITE).lerp(FISH_TINT, 0.38 * k); }
 function handPos(c) { var v = new T.Vector3(), w = new T.Vector3(); c.AL.hand.getWorldPosition(v); c.AR.hand.getWorldPosition(w); return v.add(w).multiplyScalar(0.5); }
 function startThrow(c, isMe, back, fk) {
   act(c, 'release');
   var f = makeFish(fk || 'chepdo');
   scene.add(f);
-  var F = { obj: f, owner: c, t: 0, state: 'held', isMe: isMe, back: !!back, turn: Math.random() < 0.5 ? 1 : -1 };
+  var F = { obj: f, owner: c, t: 0, state: 'held', isMe: isMe, back: !!back, fk: fk || 'chepdo', turn: Math.random() < 0.5 ? 1 : -1 };
   S.fish.push(F);
   return F;
 }
-var splashes = [];
+/* ---- bọt nước: vòng gợn mềm + giọt nước bắn lên (một InstancedMesh dùng chung) ---- */
+var splashes = [], RING_GEO = new T.RingGeometry(0.86, 1, 48); RING_GEO.userData.shared = true;
+var DROP_N = 48, drops = new T.InstancedMesh(new T.SphereGeometry(0.045, 8, 6), new T.MeshStandardMaterial({ color: lin('#F4FBFF'), roughness: 0.1, transparent: true, opacity: 0.9 }), DROP_N);
+drops.frustumCulled = false; drops.renderOrder = 14; scene.add(drops);
+var dropS = [], dropNext = 0, _dm = new T.Matrix4(), _dv = new T.Vector3();
+for (var di = 0; di < DROP_N; di++) { dropS.push({ t: 9, p: new T.Vector3(), v: new T.Vector3() }); drops.setMatrixAt(di, _dm.makeScale(0, 0, 0)); }
 function splash(pos, big) {
-  var ring = mesh(new T.RingGeometry(0.16, 0.22, 40), new T.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.85, depthWrite: false }), false);
-  ring.rotation.x = -Math.PI / 2; ring.position.set(pos.x, WATER_Y + 0.01, pos.z); scene.add(ring);
+  var ring = new T.Mesh(RING_GEO, new T.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.8, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(pos.x, WATER_Y + 0.03, pos.z); ring.renderOrder = 13; scene.add(ring);
   splashes.push({ m: ring, t: 0, big: big ? 1.6 : 1 });
+  for (var i = 0; i < (big ? 12 : 7); i++) {
+    var d = dropS[dropNext]; dropNext = (dropNext + 1) % DROP_N;
+    var a = Math.random() * Math.PI * 2, sp = (0.5 + Math.random() * 0.7) * (big ? 1.4 : 1);
+    d.t = 0; d.p.set(pos.x, WATER_Y + 0.05, pos.z); d.v.set(Math.cos(a) * sp, 1.8 + Math.random() * 1.6, Math.sin(a) * sp);
+  }
+}
+function updateDrops(dt) {
+  for (var i = 0; i < DROP_N; i++) {
+    var d = dropS[i]; if (d.t > 2) continue;
+    d.t += dt; d.v.y -= 9 * dt; d.p.addScaledVector(d.v, dt);
+    if (d.p.y < WATER_Y) { d.t = 9; drops.setMatrixAt(i, _dm.makeScale(0, 0, 0)); continue; }
+    var s = 1 - Math.min(1, d.t / 0.9) * 0.5; drops.setMatrixAt(i, _dm.makeTranslation(d.p.x, d.p.y, d.p.z).scale(_dv.set(s, s, s)));
+  }
+  drops.instanceMatrix.needsUpdate = true;
 }
 function faceObj(o, dx, dz) { o.rotation.set(0, Math.atan2(dx, dz), 0); }
 var FISH_Y = WATER_Y - 0.12;
+function dropFish(F) { disposeTree(F.obj); if (F.mo) { disposeTree(F.mo.g); disposeTree(F.mo.glow); } }
 function updateFish(dt) {
   for (var i = S.fish.length - 1; i >= 0; i--) {
     var F = S.fish[i], o = F.obj, c = F.owner; F.t += dt;
+    var wag = 14, amp = 0.05, curv = 0;
     if (F.state === 'held') {
       // cá nằm ngang trong hai lòng bàn tay cho tới lúc mở tay
       c.root.updateMatrixWorld(true);
       var fwd = new T.Vector3(-Math.cos(c.angle), 0, -Math.sin(c.angle)), side = new T.Vector3(-Math.sin(c.angle), 0, Math.cos(c.angle));
       o.position.copy(handPos(c)).add(new T.Vector3(0, 0.08, 0)).addScaledVector(fwd, 0.08);
-      o.rotation.set(0, Math.atan2(side.x, side.z), 0);
+      o.rotation.set(0, Math.atan2(side.x, side.z), 0); wag = 18; amp = 0.07;
       if (c.act !== 'release' || c.actT >= REL.open) {
         F.state = 'drop'; F.t = 0; F.from = o.position.clone(); F.dir = fwd;
         if (F.isMe) (function (fx) {
@@ -821,7 +917,7 @@ function updateFish(dt) {
     } else if (F.state === 'drop') {
       // trượt khỏi tay xuống nước, rồi tự bơi ra xa
       var kd = Math.min(1, F.t / 0.6);
-      o.position.set(F.from.x, lerp(F.from.y + 0.08, FISH_Y, ease(kd)), F.from.z);
+      o.position.set(F.from.x, lerp(F.from.y + 0.08, FISH_Y, ease(kd)), F.from.z); wag = 20; amp = 0.08;
       if (!F.splashed && F.t > 0.15) { F.splashed = true; splash(o.position); }
       if (F.t >= 0.6) {
         F.state = 'away'; F.t = 0; F.spot = o.position.clone();
@@ -830,13 +926,13 @@ function updateFish(dt) {
       var awd = F.t;
       o.position.copy(F.spot).addScaledVector(F.dir, awd * 1.2);
       var sd2 = new T.Vector3(-F.dir.z, 0, F.dir.x); o.position.addScaledVector(sd2, Math.sin(awd * 1.4) * 0.25); o.position.y = FISH_Y - Math.min(0.3, awd * 0.08);
-      var dd = F.dir.clone().addScaledVector(sd2, Math.cos(awd * 1.4) * 0.3); faceObj(o, dd.x, dd.z);
+      var dd = F.dir.clone().addScaledVector(sd2, Math.cos(awd * 1.4) * 0.3); faceObj(o, dd.x, dd.z); curv = -Math.sin(awd * 1.4) * 0.4;
       if (Math.abs(awd - 0.9) < dt) splash(o.position, true);
       if (F.t > 1.6) { F.state = 'swim'; F.t = 0; F.ang = Math.atan2(o.position.z, o.position.x); F.r = Math.hypot(o.position.x, o.position.z); }
     } else if (F.state === 'swim') {
       F.ang += F.turn * dt * 0.12; F.r = Math.max(R_IN + 1.2, F.r - dt * 0.6);
       o.position.set(Math.cos(F.ang) * F.r, FISH_Y - 0.2, Math.sin(F.ang) * F.r);
-      faceObj(o, -Math.sin(F.ang) * F.turn - Math.cos(F.ang) * 0.4, Math.cos(F.ang) * F.turn - Math.sin(F.ang) * 0.4);
+      faceObj(o, -Math.sin(F.ang) * F.turn - Math.cos(F.ang) * 0.4, Math.cos(F.ang) * F.turn - Math.sin(F.ang) * 0.4); curv = 0.15 * F.turn;
       if (F.back && F.t > 0.2) { F.state = 'return'; F.t = 0; F.from = o.position.clone(); if (F.isMe) { S.returning = F; renderHUD(); } }
       else if (!F.back && F.t > 3) { F.state = 'fade'; F.t = 0; }
     } else if (F.state === 'return') {
@@ -846,30 +942,163 @@ function updateFish(dt) {
     } else if (F.state === 'circle') {
       var th = F.t * 1.8;
       o.position.set(F.spot.x + Math.cos(th) * 0.9, FISH_Y + 0.04 + 0.03 * Math.sin(F.t * 5), F.spot.z + Math.sin(th) * 0.9);
-      faceObj(o, -Math.sin(th), Math.cos(th));
+      faceObj(o, -Math.sin(th), Math.cos(th)); curv = 0.6; wag = 10;
       if (Math.random() < dt * 0.6) splash(o.position);
     } else if (F.state === 'leave') {
       var out = new T.Vector3(-F.spot.x, 0, -F.spot.z).normalize();
       o.position.addScaledVector(out, dt * 2.4); o.position.y = FISH_Y; faceObj(o, out.x, out.z);
       if (F.t > 1.6) { F.state = 'fade'; F.t = 0; }
+    } else if (F.state === 'morph') {
+      if (morphUpdate(F, dt)) { dropFish(F); S.fish.splice(i, 1); continue; }
     } else if (F.state === 'fade') {
-      o.position.y -= dt * 0.4;
-      if (F.t > 1.2) { scene.remove(o); S.fish.splice(i, 1); continue; }
+      o.position.y -= dt * 0.4; o.material.opacity = Math.max(0, 1 - F.t / 1.2);
+      if (F.t > 1.2) { dropFish(F); S.fish.splice(i, 1); continue; }
     }
-    if (o.userData.tail) o.userData.tail.rotation.y = Math.sin(F.t * 14) * 0.5;
+    if (o.visible) { A3.bendFish(o, F.t * wag, amp, curv); fishTint(o); }
   }
   for (var s = splashes.length - 1; s >= 0; s--) {
-    var sp = splashes[s]; sp.t += dt; var sc = 1 + sp.t * 3.2 * sp.big; sp.m.scale.set(sc, sc, sc);
-    sp.m.material.opacity = Math.max(0, 0.85 - sp.t * 0.6);
-    if (sp.t > 1.5) { scene.remove(sp.m); splashes.splice(s, 1); }
+    var sp = splashes[s]; sp.t += dt; var sc = 0.2 + sp.t * 0.9 * sp.big; sp.m.scale.set(sc, sc, sc);
+    sp.m.material.opacity = Math.max(0, 0.8 - sp.t * 0.55);
+    if (sp.t > 1.5) { disposeTree(sp.m); splashes.splice(s, 1); }
   }
+  updateDrops(dt);
 }
+
+/* ---- cá hóa thân: thỉnh thoảng cá tạ ơn được tiễn đi sẽ bay lên, lóe sáng rồi hóa thành hoa sen, chim hạc hoặc đàn bướm.
+ * Chỉ hiện trên máy người thả (không đổi tin nhắn mạng); ngày rằm và mùng 1 tỉ lệ cao hơn. Thử: ?hoathan hoặc ?hoathan=sen|hac|buom */
+var HOA_THAN = (/[?&]hoathan(=([a-z]+))?/.exec(location.search) || null);
+var FORM_NAME = { sen: 'hoa sen', hac: 'chim hạc', buom: 'đàn bướm' };
+// tuổi trăng theo giờ Việt Nam (ngày): gần 0 là mùng 1, khoảng 14 là rằm
+function moonAge() { var jd = Date.now() / 86400000 + 2440587.5 + 7 / 24, P = 29.530588853; return ((jd - 2451550.1) % P + P) % P; }
+function isRamMung1() { var a = moonAge(); return a < 1.2 || a > 28.4 || Math.abs(a - 14.2) < 1.2; }
+function hoaThanChance() { return HOA_THAN ? 1 : isRamMung1() ? 0.5 : 0.25; }
+function pickForm() { var f = HOA_THAN && HOA_THAN[2]; return FORM_NAME[f] ? f : ['sen', 'hac', 'buom'][Math.floor(Math.random() * 3)]; }
+var MORPH_GLOW = glowTex('rgba(255,236,170,1)'); MORPH_GLOW.userData = { shared: true };
+function makeCrane() {
+  // chim hạc trắng: thân thon, cổ cong, mào đỏ, mỏ vàng xám, đuôi đen; hai cánh là nhóm riêng để vỗ
+  var g = new T.Group(), pp = new Parts(), wh = A3.shade('#FFFFFF', 0.25, 0.1), mat = VC({ roughness: 0.6, side: T.DoubleSide, transparent: true });
+  pp.add(new T.SphereGeometry(0.22, 16, 12), wh, MX([0, 0, 0], null, [1, 0.85, 1.9]));
+  var neck = new T.CatmullRomCurve3([[0, 0.05, 0.32], [0, 0.22, 0.48], [0, 0.4, 0.5], [0, 0.5, 0.62]].map(function (a) { return new T.Vector3(a[0], a[1], a[2]); }));
+  pp.add(new T.TubeGeometry(neck, 12, 0.055, 8, false), wh);
+  pp.add(new T.SphereGeometry(0.08, 12, 10), wh, MX([0, 0.52, 0.64]));
+  pp.add(new T.SphereGeometry(0.035, 8, 6), lin('#E0443A'), MX([0, 0.59, 0.62]));
+  pp.add(new T.ConeGeometry(0.025, 0.2, 8), lin('#B8A98A'), MX([0, 0.5, 0.8], [Math.PI / 2, 0, 0]));
+  [-1, 1].forEach(function (s) { pp.add(new T.SphereGeometry(0.014, 6, 5), lin('#1A1210'), MX([0.06 * s, 0.54, 0.69])); });
+  pp.add(new T.ConeGeometry(0.12, 0.3, 8), lin('#2A2624'), MX([0, 0.02, -0.48], [-Math.PI / 2 - 0.2, 0, 0], [1.4, 1, 0.5]));
+  [-1, 1].forEach(function (s) { pp.add(A3.capsule(0.012, 0.5, 5, 2), lin('#3A3430'), MX([0.06 * s, -0.12, -0.55], [-Math.PI / 2 + 0.15, 0, 0])); });
+  g.add(pp.mesh(mat, true, false));
+  var wing = new T.Shape(); wing.moveTo(0, 0.18); wing.quadraticCurveTo(0.5, 0.28, 0.95, 0.05); wing.lineTo(0.9, -0.08); wing.quadraticCurveTo(0.5, -0.14, 0, -0.16); wing.lineTo(0, 0.18);
+  var wg = new T.ShapeGeometry(wing, 10); wg.rotateX(-Math.PI / 2);
+  g.userData.wings = [-1, 1].map(function (s) {
+    var wp = new Parts(); wp.add(wg, function (l) { return mixC(lin('#FFFFFF'), lin('#22201E'), sstep(0.62, 0.85, Math.abs(l.x))); }, MX(null, null, [s, 1, 1]));
+    var piv = new T.Group(); piv.position.set(0.1 * s, 0.08, 0.05); piv.add(wp.mesh(mat, true, false)); g.add(piv); return piv;
+  });
+  g.userData.mat = mat; return g;
+}
+function makeButterflies() {
+  var g = new T.Group(), cols = ['#F38FB1', '#FFD04A', '#7FC6EE', '#B98FEA', '#8FD9A8'], mat = VC({ roughness: 0.6, side: T.DoubleSide, transparent: true });
+  var w = new T.Shape(); w.moveTo(0, 0); w.bezierCurveTo(0.08, 0.12, 0.2, 0.14, 0.2, 0.04); w.bezierCurveTo(0.2, -0.04, 0.12, -0.06, 0.08, -0.04); w.bezierCurveTo(0.14, -0.1, 0.1, -0.16, 0.04, -0.12); w.lineTo(0, 0);
+  var wg = new T.ShapeGeometry(w, 8); wg.rotateX(-Math.PI / 2);
+  g.userData.bs = cols.map(function (hex, i) {
+    var b = new T.Group(), col = lin(hex);
+    var bp = new Parts(); bp.add(A3.capsule(0.012, 0.08, 6, 2), lin('#4A3F3A'), MX(null, [Math.PI / 2, 0, 0])); b.add(bp.mesh(mat, false, false));
+    var ws = [-1, 1].map(function (s) {
+      var wp = new Parts(); wp.add(wg, function (l) { return mixC(mixC(col, lin('#FFFFFF'), 0.45), col, sstep(0.02, 0.12, Math.abs(l.x))); }, MX(null, null, [s, 1, 1]));
+      var piv = new T.Group(); piv.add(wp.mesh(mat, false, false)); b.add(piv); return piv;
+    });
+    b.scale.setScalar(1.3); g.add(b);
+    return { g: b, w: ws, a: i / cols.length * Math.PI * 2, r: 0.3 + Math.random() * 0.4, ph: Math.random() * 6, sp: 0.8 + Math.random() * 0.5 };
+  });
+  g.userData.mat = mat; return g;
+}
+function makeLotusBloom() {
+  var g = new T.Group(), pp = new Parts(), mat = VC({ roughness: 0.5, side: T.DoubleSide, transparent: true });
+  var pad = new T.CircleGeometry(1, 24, 0.22, Math.PI * 2 - 0.44); pad.rotateX(-Math.PI / 2);
+  pp.add(pad, A3.shade('#76AE68', 0.2, 0.2), MX([0, -0.02, 0], null, 0.9));
+  lotusParts(pp, new T.Matrix4().makeScale(3.2, 3.2, 3.2));
+  g.add(pp.mesh(mat, true, false)); g.userData.mat = mat; return g;
+}
+function morphUpdate(F, dt) {
+  var o = F.obj, t = F.t;
+  if (!F.mo) {
+    F.mo = { p0: o.position.clone(), form: F.form || 'sen', g: null };
+    var gl = new T.Sprite(new T.SpriteMaterial({ map: MORPH_GLOW, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+    gl.renderOrder = 15; scene.add(gl); F.mo.glow = gl; splash(o.position, true);
+  }
+  var mo = F.mo, gl2 = mo.glow;
+  if (t < 1.4) {
+    // cá bay lên xoay tròn, ánh sáng lớn dần rồi lóe lên
+    var up = ease(t / 1.1);
+    o.position.set(mo.p0.x, FISH_Y + up * 1.4, mo.p0.z); o.rotation.y += dt * (4 + t * 8);
+    o.scale.setScalar(FISH_SCALE * (1 - seg(t, 1.0, 1.4)));
+    gl2.position.copy(o.position); gl2.scale.setScalar(0.6 + up * 2.2 + seg(t, 1.0, 1.35) * 1.8); gl2.material.opacity = 0.9;
+    A3.bendFish(o, t * 22, 0.08, 0);
+    return false;
+  }
+  o.visible = false;
+  var ft = t - 1.4, p = new T.Vector3(mo.p0.x, FISH_Y + 1.4, mo.p0.z);
+  if (!mo.g) {
+    mo.g = mo.form === 'hac' ? makeCrane() : mo.form === 'buom' ? makeButterflies() : makeLotusBloom();
+    scene.add(mo.g);
+  }
+  var g = mo.g, fadeK = 1 - seg(ft, 4.6, 5.8);
+  gl2.position.copy(p); gl2.scale.setScalar(4 * (1 - seg(ft, 0, 0.8)) + 0.01); gl2.material.opacity = 1 - seg(ft, 0, 0.8);
+  g.userData.mat.opacity = fadeK;
+  if (mo.form === 'sen') {
+    // hoa sen hạ xuống mặt nước rồi nở to, xoay chậm
+    var dn = ease(ft / 0.9);
+    g.position.set(p.x, lerp(p.y, WATER_Y + 0.06, dn), p.z); g.rotation.y = ft * 0.3;
+    var s = Math.min(1, ft / 0.9) * (1 + 0.12 * Math.sin(Math.min(1, ft / 1.4) * Math.PI));
+    g.scale.set(s, s, s); if (ft > 4.6) g.position.y -= (ft - 4.6) * 0.1;
+  } else if (mo.form === 'hac') {
+    // chim hạc lượn vòng lên trời phía giữa hồ, vỗ cánh
+    var a = ft * 1.1, r = 0.9 + ft * 0.45, cx = p.x - p.x / Math.hypot(p.x, p.z) * 1.6, cz = p.z - p.z / Math.hypot(p.x, p.z) * 1.6;
+    g.position.set(cx + Math.cos(a) * r, p.y + ft * 0.9, cz + Math.sin(a) * r);
+    g.rotation.set(-0.15, Math.atan2(-Math.sin(a), Math.cos(a)), 0.3); g.scale.setScalar(Math.min(1, ft / 0.4) * 1.3);
+    var fl = Math.sin(ft * 9) * 0.7; g.userData.wings[0].rotation.z = -fl; g.userData.wings[1].rotation.z = fl;
+  } else {
+    // đàn bướm tỏa ra rồi bay lên
+    g.position.copy(p);
+    g.userData.bs.forEach(function (b) {
+      var aa = b.a + ft * 0.9 * b.sp, rr = b.r + ft * 0.55;
+      b.g.position.set(Math.cos(aa) * rr, ft * 0.7 * b.sp + 0.15 * Math.sin(ft * 3 + b.ph), Math.sin(aa) * rr);
+      b.g.rotation.y = -aa; var fw = Math.sin(ft * 16 + b.ph) * 0.9; b.w[0].rotation.z = fw; b.w[1].rotation.z = -fw;
+      b.g.scale.setScalar(1.3 * Math.min(1, ft / 0.4));
+    });
+  }
+  return ft > 5.8;
+}
+// tiễn cá đang lượn vòng; trả về hình hóa thân nếu cá của mình hóa thân
 function releaseCircling(owner) {
+  var form = null;
   S.fish.forEach(function (F) {
     if (F.owner === owner && (F.state === 'circle' || F.state === 'return')) {
       if (!F.spot) F.spot = F.obj.position.clone();
-      F.state = 'leave'; F.t = 0;
+      F.t = 0; F.state = 'leave';
+      if (F.isMe && Math.random() < hoaThanChance()) {
+        form = F.form = pickForm(); F.state = 'morph';
+        var st = S.stats[F.fk] || { rel: 0, back: 0, tf: 0 }; st.tf = (st.tf || 0) + 1; S.stats[F.fk] = st; store.set('stats', S.stats);
+      }
     }
+  });
+  return form;
+}
+/* ---- cá bơi sẵn trong hồ cho cảnh sống động (chỉ để ngắm, không thuộc lối chơi) ---- */
+var AMB = [];
+(function () {
+  var kinds = ['chepdo', 'kohaku', 'chepvang', 'cavang', 'showa', 'dieuhong', 'kohaku'], rr = A3.rng(21);
+  kinds.slice(0, Q.low ? 4 : kinds.length).forEach(function (k, i) {
+    var m = makeFish(k); m.scale.setScalar(FISH_SCALE * (0.85 + rr() * 0.3)); scene.add(m);
+    AMB.push({ m: m, th: rr() * Math.PI * 2, r0: R_IN + 2.2 + rr() * (R_OUT - R_IN - 4.4), ra: 0.8 + rr() * 1.2, w: (rr() < 0.5 ? -1 : 1) * (0.025 + rr() * 0.03), ph: i * 1.7, y: FISH_Y - 0.15 - rr() * 0.2 });
+  });
+})();
+var _a1 = new T.Vector3(), _a2 = new T.Vector3();
+function ambPos(f, t, out) { var th = f.th + f.w * t, r = f.r0 + f.ra * Math.sin(t * 0.13 + f.ph); return out.set(Math.cos(th) * r, f.y + 0.03 * Math.sin(t * 0.7 + f.ph), Math.sin(th) * r); }
+function updateAmbient(time) {
+  AMB.forEach(function (f) {
+    ambPos(f, time, _a1); ambPos(f, time + 0.15, _a2);
+    f.m.position.copy(_a1); f.m.rotation.set(0, Math.atan2(_a2.x - _a1.x, _a2.z - _a1.z), 0);
+    A3.bendFish(f.m, time * (7 + f.ph * 0.3) + f.ph, 0.045, f.w * 8); fishTint(f.m);
   });
 }
 
@@ -1118,7 +1347,7 @@ function exitLake(msg) {
   if (S.hosting && A) { try { A.stopHost(); } catch (e) { /* bỏ qua */ } }
   S.hosting = false; S.hostIp = '';
   clearRemotes(); clearTrash();
-  S.fish.forEach(function (F) { scene.remove(F.obj); }); S.fish = [];
+  S.fish.forEach(dropFish); S.fish = [];
   if (window.HAL && HAL.onExit) HAL.onExit();
   $('hud').hidden = true; $('lobby').hidden = false; $('hintL').hidden = $('hintR').hidden = true;
   lobbyError(msg || '');
@@ -1162,7 +1391,12 @@ $('gNiem').addEventListener('click', function () {
   myAct('niem');
   if (S.returning) {
     S.returning = null;
-    setTimeout(function () { releaseCircling(me); toast('Chú cá đã bơi đi bình an', 'Công đức phóng sinh của bạn đã được ghi nhận.'); renderHUD(); }, 500);
+    setTimeout(function () {
+      var form = releaseCircling(me);
+      if (form) toast('Chú cá hóa thân thành ' + FORM_NAME[form], 'Phước lành hiếm có. Công đức phóng sinh của bạn đã được ghi nhận.');
+      else toast('Chú cá đã bơi đi bình an', 'Công đức phóng sinh của bạn đã được ghi nhận.');
+      renderHUD();
+    }, 500);
   }
 });
 $('go').addEventListener('click', function () {
@@ -1437,6 +1671,7 @@ function stepChar(c, dt, idx) {
 function frame() {
   var dt = Math.min(0.05, clock.getDelta()); time += dt;
   updateWater(time);
+  if (VIEW !== 'hall') updateAmbient(time);
   if (S.inLake && me) {
     var dir = walkDir || (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
     if (me.act === 'release' || me.act === 'pick') dir = 0;
